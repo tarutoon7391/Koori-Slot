@@ -205,7 +205,7 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
     }
 
     function newBonus(type, inAt) {
-        return { type, left: 0, atWon: false, inAt, boss: null, bossWin: false, script: [], willWin: false };
+        return { type, left: 0, atWon: false, inAt, boss: null, bossWin: false, script: [], willWin: false, neraeNext: false, neraePending: false };
     }
 
     // ゾーンの開始と天井 (ガセを含めて必ず前兆に入る)。通常時と AT 中 (AT 中に消化したゲーム数も数える) で使う
@@ -373,15 +373,22 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
         }
         let shape = null;
         let nav = null;
+        // 当選した役を引いたゲームでは「狙え」を出さず、引いた出目を見せてから次のゲームのレバーで「狙え」→ こおりくん揃い (2026-10-21 ユーザー指定。全部の役で同じ)。
+        // 最後のゲームで当選したときだけ、次のゲームがないのでそのゲームに出す
         const won = !b.atWon && b.type !== 'epbig' && hit;
         // 押し順ベルのナビ。内部的に当選したゲームだけ順押しナビ (当選確定。押し順に関係なく 15枚)
         if (role === 'bell') nav = won ? HOT_NAV : rng.pick(NAVS);
         if (won) {
             b.atWon = true;
+            if (b.left === 1) b.neraePending = true;   // 最後のゲーム: この下ですぐ出す
+            else b.neraeNext = true;                  // 次のゲームのレバーで出す
+        }
+        if (b.neraePending) {
+            b.neraePending = false;
             emit(E.BONUS_NERAE, { color: rng.weighted(config.show.nerae.real), win: true });
             shape = 'koori';
             if (b.inAt) b.bossWin = true;
-        } else {
+        } else if (!won) {
             const lastLose = b.inAt && b.type !== 'epbig' && !b.atWon && b.left === 1;
             if (lastLose) emit(E.AT_BOSS, { boss: b.boss, final: true, win: false });
             // ガセの「狙え」(非当選ゲームの約 1/63。出目で見せるのでハズレのゲームに出す)
@@ -391,6 +398,11 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
             }
         }
         b.left--;
+        // 次のゲームで「狙え」
+        if (b.neraeNext) {
+            b.neraeNext = false;
+            b.neraePending = true;
+        }
         emit(E.BONUS_GAME, { bonus: b.type, left: b.left, nav });
         return { shape, nav };
     }

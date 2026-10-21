@@ -529,7 +529,7 @@ test('ボーナス中: 押し順ベルに bonus:game の nav が付き、順押�
                 assert.equal(end.payout, 15, 'ナビどおりなら 15枚');
                 if (nav[0] === 0) {
                     hot++;
-                    assert.equal(end.win, 'koori', '順押しナビ = 当選 = こおりくん揃い');
+                    assert.equal(end.win, 'bell', '順押しナビのゲームはベル揃い (狙えは次のゲーム)');
                 } else normal++;
             }
         }
@@ -658,9 +658,50 @@ test('デバッグで役を差しかえたボーナスのゲームは、その�
     play(m, rng);
     m.debug.setNextRole('midCherry');
     play(m, rng);
+    // 引いたゲームは中段チェリーの出目を見せる (狙えはまだ)
+    assert.ok(!log.some(e => e.type === EVENTS.BONUS_NERAE), '引いたゲームには狙えを出さない');
+    assert.equal(log.filter(e => e.type === EVENTS.GAME_END).pop().win, 'cherry');
+    // 次のゲームのレバーで狙え → こおりくん揃い
+    play(m, rng);
     const nerae = log.find(e => e.type === EVENTS.BONUS_NERAE);
-    assert.ok(nerae && nerae.win, '中段チェリーで狙え');
+    assert.ok(nerae && nerae.win, '中段チェリーの次のゲームで狙え');
     assert.equal(log.filter(e => e.type === EVENTS.GAME_END).pop().win, 'koori');
+});
+
+test('ボーナス中の「狙え」は当選した役の次のゲームに出る (全部の役)。最後のゲームで当選したときだけそのゲームに出る', () => {
+    const rng = createRng(53);
+    // 押し順ベル (順押しナビは当選したゲーム、狙えは次のゲーム)
+    const m = machineWith(c => { c.bonusAt.bell = 100; }, { seed: 54 });
+    const log = [];
+    m.on(e => log.push(e));
+    m.debug.bonus('big');
+    play(m, rng);
+    m.debug.setNextRole('bell');
+    play(m, rng);
+    const game = log.filter(e => e.type === EVENTS.BONUS_GAME).pop();
+    assert.deepEqual(game.nav, [0, 1, 2], '当選したベルのゲームは順押しナビ');
+    assert.equal(log.filter(e => e.type === EVENTS.GAME_END).pop().win, 'bell', '当選したゲームはベル揃いのまま');
+    assert.ok(!log.some(e => e.type === EVENTS.BONUS_NERAE), 'まだ狙えは出ない');
+    m.debug.setNextRole('none');
+    play(m, rng);
+    const nerae = log.find(e => e.type === EVENTS.BONUS_NERAE);
+    assert.ok(nerae && nerae.win, '次のゲームのレバーで狙え');
+    assert.equal(log.indexOf(nerae), log.findIndex((e, i) => i > log.indexOf(nerae) - 3 && e.type === EVENTS.LEVER) + 1, 'レバーの直後');
+    assert.equal(log.filter(e => e.type === EVENTS.GAME_END).pop().win, 'koori');
+    // 最後のゲームで当選: そのゲームに狙え
+    const m2 = machineWith(c => { for (const k of Object.keys(c.bonusAt)) c.bonusAt[k] = 0; c.bonusAt.midCherry = 100; }, { seed: 55 });
+    const log2 = [];
+    m2.on(e => log2.push(e));
+    m2.debug.bonus('reg');
+    play(m2, rng);
+    for (let i = 0; i < 19; i++) { m2.debug.setNextRole('none'); play(m2, rng); }
+    assert.equal(m2.snapshot().bonus.left, 1);
+    m2.debug.setNextRole('midCherry');
+    play(m2, rng);
+    const nerae2 = log2.find(e => e.type === EVENTS.BONUS_NERAE);
+    assert.ok(nerae2 && nerae2.win, '最後のゲームの当選はそのゲームに狙え');
+    assert.equal(log2.filter(e => e.type === EVENTS.GAME_END).pop().win, 'koori');
+    assert.equal(log2.find(e => e.type === EVENTS.BONUS_END).at, true);
 });
 
 test('前兆の途中で AT のゲーム数がなくなると、ラストジャッジで当落を告知する', () => {
