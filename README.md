@@ -4,7 +4,7 @@
 
 - **演出・見た目**（`src/presentation/`）：友達（演出担当）が作った完成版。このリポジトリでは触らない
 - **内部処理**（`src/logic/`）：自分（内部処理担当）。仕様書 `docs/spec.md` に沿った本物（v1.0。2026-10-21 に仮組から差しかえ）
-- 公開：Railway（サービス名 `Koori-Slot`。下の「Railway へのデプロイ」）
+- 公開：Railway https://koori-slot-production.up.railway.app （サービス名 `Koori-Slot`。下の「Railway へのデプロイ」）
 
 ## 遊び方・確認のしかた
 
@@ -93,7 +93,7 @@ URL に付けると、その状態から始まります（組み合わせられ�
 
 ## Railway へのデプロイ
 
-Railway のサービスはまだ作っていません。設定はそろえてあります（`railway.json`、`npm start` の前に `prestart` で `npm run build` が走る）。
+公開 URL: https://koori-slot-production.up.railway.app （2026-10-21 に作成。GitHub 連携で `main` に push すると自動デプロイ）。設定は `railway.json`（Railpack）と `prestart`（`npm start` の前に `npm run build`）。手元から直接デプロイするなら `railway up --ci --service Koori-Slot`。
 
 1. Railway で New Project → **Deploy from GitHub repo** → このリポジトリ（`Koori-Slot`）を選ぶ。
 2. サービス名を `Koori-Slot` にする。環境変数は不要（`PORT` は Railway が渡す）。
