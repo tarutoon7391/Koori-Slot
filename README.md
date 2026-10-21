@@ -2,22 +2,23 @@
 
 ゲーム数上乗せ型の AT 機（純増 約3枚、設定 1〜6）。React + Vite。
 
-- **演出・見た目**（`src/presentation/`）：こちらで作っている
-- **内部処理**（`src/logic/`）：今は演出を確認するための**仮組**。本物ができたら差しかえる
+- **演出・見た目**（`src/presentation/`）：友達（演出担当）が作った完成版。このリポジトリでは触らない
+- **内部処理**（`src/logic/`）：自分（内部処理担当）。仕様書 `docs/spec.md` に沿った本物（v1.0。2026-10-21 に仮組から差しかえ）
+- 公開：Railway（サービス名 `Koori-Slot`。下の「Railway へのデプロイ」）
 
 ## 遊び方・確認のしかた
 
 **いちばん手軽なのは `play.html` をダブルクリック**して開くことです（ブラウザだけで動く1つのファイル）。
-ネットでの公開は Railway（準備中。サービス名 `Koori-Slot`）で行います。
 `index.html` を直接開くと真っ白になります（開発用の元のファイルなので、`npm run dev` で開く）。
 
 ```sh
 npm install
 npm run dev        # http://localhost:5173 を開く
-npm test           # 内部処理（仮組）のテスト
-npm run build      # dist/ に作る（Railway は npm run build → npm start）
-npm run build:file # play.html（ダブルクリックで遊べる1つのファイル）を作り直す
-node tools/build-design.mjs   # 画面設計書・キャラ設計書のページ（docs/design.html）を作り直す
+npm test           # 内部処理のテスト (tests/logic.test.js)
+npm run sim        # 内部処理のシミュレーション (設定 1〜6。結果は docs/sim_result.md)
+npm run build      # dist/ に作る (Railway はこれを npm start で配信する)
+npm run build:file # play.html (ダブルクリックで遊べる1つのファイル) を作り直す
+node tools/build-design.mjs   # 画面設計書・キャラ設計書のページ (docs/design.html) を作り直す
 ```
 
 | 操作 | キー | 画面 |
@@ -28,9 +29,10 @@ node tools/build-design.mjs   # 画面設計書・キャラ設計書のページ
 | デバッグを出す・しまう | D | 「デバッグ」 |
 
 デバッグ画面の機能：
-- 内部の状態（モード・ステート・当たるところ・前兆）を見る
+- 内部の状態（モード・ステート・当たるところ・前兆・ストック）を見る
 - 次のゲームの役を決める
 - 前兆（本物・ガセ、相手チーム）・天井・AT 直撃・天国カットイン・ボーナスを起こす
+- AT 中の BIG・REG・エピソードBIG、AT 中の前兆、AT の残りを 3G に（ラストジャッジ）、特化ゾーンのストック
 - オートで回す
 
 ### 確認用の URL
@@ -47,80 +49,66 @@ URL に付けると、その状態から始まります（組み合わせられ�
 | `?direct=1` | 最初のゲームで AT 直撃 |
 | `?role=strongCherry` | 最初のゲームの役 |
 | `?bonus=big` | ボーナス確定から（`reg` `epbig` も） |
-| `?tokka=1` | AT 直撃のあと、上乗せ特化ゾーンをストック（1ゲーム回すと告知） |
-
-デバッグ画面の「AT 中」：AT 中の BIG・REG・エピソードBIG、AT 中の本前兆・ガセ前兆、AT の残りを 3G に（ラストジャッジの確認は「AT 中の本前兆」→「AT の残りを 3G に」）。
 | `?bonusrole=midCherry` | ボーナスの最初のゲームの役。`?bonus=big&bonusrole=midCherry` で、次のゲームに「こおりを狙え」が出る |
+| `?tokka=1` | AT 直撃のあと、上乗せ特化ゾーンをストック（1ゲーム回すと告知） |
 | `?auto=1` | オートで回す |
 
-## 作ってあるもの（2026-10-20）
+## 分担
 
-**通常時**（画面設計書 3章）：
-- 階のステージ：1〜10階・11階以上（夕方）・四天王の階・大魔王の間
-- 状態が変わったときのエレベーターと、ふるカワのナビ
-- 魔天ゾーンの黒い靄、天国のカットイン（ナイナイ・アルアル）
-- 前兆：中間階層でライバルチームと対決 → 連続演出 → 「決着！」で PUSH → 撃破（ボーナス確定・狙え）／撃破ならず
-- 前兆中のカットイン（青・緑・赤・金・虹）、レア役のフラッシュ・先バレ音・確定音
-- PUSH ボタンの色・飛び出し
-- 天井到達（ナイナイ・アルアル → BIG 確定）
-- AT 直撃（高い先バレ音 → ノイズ → 暗転 → こおりいきていける！）
-- BGM（階ごと・前兆）と効果音
+| 担当 | 場所 | 中身 |
+|---|---|---|
+| 演出（友達） | `src/presentation/` | 筐体・液晶・リールの絵・音。`docs/screen-design.md`・`docs/characters.md` |
+| 内部処理（自分） | `src/logic/` | 役の抽選・モード・ステート・前兆・ボーナス・AT・特化ゾーン・リール制御。`docs/spec.md`・`docs/CHANGELOG_logic.md`・`docs/sim_result.md` |
+| 共通 | `docs/events.md` | **内部処理と演出の約束**（台の窓口 `createMachine` とイベント）。変えるときは先にここを直して相手に知らせる |
 
-**ボーナス中**（画面設計書 4章。2026-10-20）：
-- 始まりのタイトル（BIG BONUS・REGULAR BONUS・EPISODE BIG と、そろえた図柄）
-- BIG：黄金の背景にキャラ解説・ステージ解説のカード（17枚、5秒ごと）。REG：銀色の背景に短い版（6枚）。次のボーナスは続きのカードから
-- エピソードBIG（こおりくん・こおりくん・こおりくん。2026-10-21 に BAR・BAR・BAR から変更）：夕焼けの摩天楼とストーリー（全10話。ゲーム数に合わせて場面が進む。引くたびに次の話へ。AT確定なので右上に「AT確定」）
-- 「こおりを狙え」：カットイン → 押し順で確定のタイミングが変わる（中押しは1確・はさみ押しは2確・順押しは第3停止）、テンパイ、ガセ
-- AT確定：こおりくん揃い → 虹色のインパクトフラッシュ → 「AT確定」と専用の当たり音（AT 中のボーナスなら「特化ゾーン確定」）
-- ボーナス終了：獲得枚数、1G連 の「ボーナス確定！ ×数」、AT へ行くときは「こおりバトルRASH へ！」
-- BGM：BIG・REG・エピソードBIG で別の曲
-- 中身（解説・エピソードの文章）は `src/presentation/lcd/bonusStory.js`、画面は `src/presentation/lcd/bonus.js`
+演出側は `src/logic/index.js` からだけ読み込み、内部処理の中身（モード・ステートなど）は演出の判断に使いません（デバッグ画面の表示だけ `machine.debug.internal()`）。
 
-**AT「こおりバトルRASH」**（画面設計書 5章。2026-10-20）：
-- 突入の画面（チームが走ってきて「こおりバトルRASH 突入！」と初期ゲーム数）
-- ふだんの画面：摩天楼を駆け上がるチーム、右上に残りゲーム数、押し順ナビを液晶にも出す（例：1右 → 2中 → 3左）
-- 残り 10・5・3・2・1G で大きな数字
-- 上乗せ：レア役の出目を見せてから、相手が出てきて攻撃 →「+〇G」「撃破！」。攻撃するキャラ・相手は内部処理の `at:add` のとおり
-  - 仲間（やすさん・たむさん・だけさん）・おにおにはそのまま攻撃
-  - コオリソードは PUSH 1回、コオリハンマーは長押し（ゲージがたまる。B キーを押しっぱなしでも）、四天王絶対殺す剣は PUSH 4回。押さなくても 5秒で進む
-  - 上乗せ音は大きさで3段階
-- 終了画面：総獲得枚数・総ゲーム数・上乗せの回数と合計・最高の上乗せ、エンディング曲
-- 画面は `src/presentation/lcd/at.js`
+## `docs/` の読み方
 
-**AT に足したもの**（2026-10-21。内部処理の担当の回答 = `docs/events.md` v0.2）：
-- 押し順ナビは中押し・右押しの4択。順押しナビ（当選確定）は虹色の枠と「順押し!?」・確定音
-- 上乗せなしのレア役は「ミス！」（相手がよける。`at:miss`）
-- AT 中のボーナス：始まりに四天王・大魔王ASO が登場 → 当選ゲームで「こおりを狙え」→ 揃ったら「勝利！特化ゾーン確定」/ 当たらないまま最後のゲームで「撃破ならず…」。ボーナス中は右上に相手の札（`at:boss`）
-- AT 中の前兆：AT の画面のまま中間階層のライバルとの対決。左下に「RASH 残り〇G」
-- 前兆中に AT のゲーム数がなくなったとき：ラストジャッジ（PUSH で結果。撃破ならボーナス確定、負けなら RASH 終了。`at:judge`）
-- 終了画面の設定示唆の画像を出し分け（`at:end` の `hint`）
+| 書類 | 中身 |
+|---|---|
+| `docs/spec.md` | **仕様書の正本**（Claude Docs「AT機（第3弾・仮称）仕様書 v0.1」の Markdown 書き出し）。モード・ゾーン・ステート・ボーナス・AT・特化ゾーン・リール配列・払い出し |
+| `docs/events.md` | 内部処理と演出の約束（イベントの名前・データ・順番、デバッグ API）。v0.3 で足したものは「演出側確認待ち」の印つき |
+| `docs/CHANGELOG_logic.md` | 内部処理の変更履歴（仮組 → 本物で変えたこと、`docs/events.md` に足したもの、【仮】のまま残っている値） |
+| `docs/sim_result.md` | シミュレーションの結果（設定 1〜6 の初当たり・AT・特化ゾーン・コイン持ち・機械割）と「気になる点」 |
+| `docs/screen-design.md`・`docs/characters.md` | 画面設計書・キャラ設計書（絵つきは `docs/design.html`） |
 
-**上乗せ特化ゾーン**（画面設計書 6章。2026-10-20）：
-- 当選したゲームで、フリーズ風の「特化ゾーン ストック！」と確定音
-- パターンを選ぶ画面：左・右の停止ボタンか液晶のタップで選び、PUSH で決める。前に選んだほうを最初に選んでおく。10秒で自動で始まる
-- 魔王の褒美：1G ごとに宝箱が増え、3G 終わってから順に開けて上乗せを出す。継続確定（強レア役・中段チェリー）が入っていたら、ふたが虹色で虹フラッシュ「継続確定！」
-- こおり大腸炎：1G ごとに上乗せを出す（+5G は小さい文字だけ）。継続確定になったら、こおりくんと炎が虹色になって「確定」
-- セットの終わり：継続！／復活！（継続率テーブルで続いた）／終了…。終了画面で上乗せの合計と残りゲーム数
-- BGM：魔王の褒美（不気味で豪華）・こおり大腸炎（ドタバタ）
-- 画面は `src/presentation/lcd/tokka.js`。イベントは `docs/events.md` 5-5 の案（担当の確認待ち）で、仮組の内部処理にも同じ案の最小限の特化ゾーンを入れた
+## 内部処理（`src/logic/`）の中身
 
-**これから**：エピソードBIG は全10話（第9話「最終決戦」で大魔王を倒し、第10話でまた借金して「つづく」。第5〜10話はユーザーの流れをもとに Claude がセリフを書いた。セリフと題名の確認待ち）。内部処理の担当との約束は `docs/events.md` v0.2（2026-10-21 の回答を反映）。今できているところは画面設計書の 9章。
+| ファイル | 中身 |
+|---|---|
+| `index.js` | 入り口。`createMachine` `EVENTS` `NOTICE_KINDS` `STRIPS` `REEL_LENGTH` `windowAt` を出す（演出側はここだけ読む） |
+| `machine.js` | 台の内部処理（1ゲームの流れ、通常時・ボーナス・AT・特化ゾーン、デバッグ API） |
+| `config.js` | 数値。仕様書で決定の表と、【仮】の たたき台（役の出現率・共通ベルの有無・AT 中ベルの当選率・演出の振り分けなど） |
+| `reelControl.js` | リール制御。役ごとの出目の形（`SHAPES`）と、押した位置にいちばん近いところで止める仕組み。押し順ベルの取りこぼし・ガセ「狙え」は押した順で形を決め直す |
+| `reels.js` | リール配列 v1.0 と出目の見方 |
+| `rng.js` | 乱数（seed 付き。テスト・シミュレーション用） |
+| `events.js` | イベントの名前（`docs/events.md` と同じ） |
+
+内部処理を直したら：`npm test` → 必要なら `npm run sim` → `npm run build:file` で `play.html` を作り直してからコミット。
+
+### 仮組からの差しかえについて
+
+仮組（演出確認用）から本物に差しかえるときに変えたのは `src/logic/` の中だけです。`createMachine` が返すもの（`on` `lever` `stop` `snapshot` `debug`）とイベントの名前・データは `docs/events.md` v0.2 のまま。足したもの（`bonus:game` の `nav`・`tokka:game` の `nav`・AT 中のエピソードBIG の `at:boss`）は `docs/events.md` に「演出側確認待ち」で書いてあります。詳しくは `docs/CHANGELOG_logic.md`。
+
+## Railway へのデプロイ
+
+Railway のサービスはまだ作っていません。設定はそろえてあります（`railway.json`、`npm start` の前に `prestart` で `npm run build` が走る）。
+
+1. Railway で New Project → **Deploy from GitHub repo** → このリポジトリ（`Koori-Slot`）を選ぶ。
+2. サービス名を `Koori-Slot` にする。環境変数は不要（`PORT` は Railway が渡す）。
+3. ビルドは `railway.json` のとおり Nixpacks。Build Command は `npm run build`（`prestart` でも走るので、指定しなくても動く）、Start Command は `npm start`（`vite preview --host 0.0.0.0 --port $PORT`）。
+4. Settings → Networking → Generate Domain で公開 URL を作る。ヘルスチェックは `/`。
+5. 以後は `main` に push すると自動でデプロイされる。
+
+`vite` と `@vitejs/plugin-react` は `dependencies` に入れてあります（Railway のビルドで devDependencies が入らない場合の保険）。
 
 ## フォルダ
 
 | 場所 | 中身 |
 |---|---|
-| `src/logic/` | 内部処理（仮組）。演出側が読むのは `index.js` だけ |
+| `src/logic/` | 内部処理（本物）。演出側が読むのは `index.js` だけ |
 | `src/presentation/` | 演出：`App.jsx`（画面全体）・`game.js`（つなぐところ）・`lcd/`（液晶）・`reels/`（リール）・`sound/`（音）・`art/`（ドット絵）・`components/`（筐体・デバッグ） |
-| `docs/events.md` | **内部処理と演出の約束**（台の窓口とイベント）。合体するときはここをそろえる |
-| `docs/screen-design.md`・`docs/characters.md` | 画面設計書・キャラ設計書（絵つきは `docs/design.html`） |
-| `tools/design/` | 設計書の画面イメージ |
-| `tests/` | テスト |
-
-## 内部処理と合体するには
-
-1. 本物の内部処理を `src/logic/` に置き、`src/logic/index.js` から `createMachine` `EVENTS` `STRIPS` `REEL_LENGTH` `windowAt` を出す。
-2. `createMachine` が返すもの（`on` `lever` `stop` `snapshot` `debug`）と、イベントの名前・データを `docs/events.md` にそろえる。
-3. `npm run dev` で動かし、デバッグ画面で前兆・天井・AT 直撃などを起こして確認する。
-
-演出側（`src/presentation/`）は、内部処理の中身を見ないで、イベントだけで動いています。
+| `docs/` | 仕様書・約束・設計書・変更履歴・シミュレーション結果（上の「`docs/` の読み方」） |
+| `tests/` | 内部処理のテスト |
+| `tools/` | `simulate.js`（シミュレーション）・`build-file.mjs`（`play.html`）・`build-design.mjs` と `design/`（設計書のページ） |
