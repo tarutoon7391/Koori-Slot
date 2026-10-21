@@ -814,3 +814,39 @@ test('押し順ベル: 4つの押し順すべてで、正解なら右下がり�
         assert.equal(seen.size, 4, `4つのナビを見た: ${[...seen]}`);
     }
 });
+
+// ----- 設定示唆トロフィー (handoff/2026-10-21_zukan-trophy) -----
+
+test('at:end の trophy: 設定 1〜6 で 10,000 回出して、設定より上の色が 1回も出ない。出ないときは null', () => {
+    const RANK = { white: 1, blue: 2, green: 3, purple: 4, red: 5, rainbow: 6 };
+    const rng = createRng(61);
+    for (let setting = 1; setting <= 6; setting++) {
+        const m = createMachine({ setting, seed: 60 + setting });
+        const seen = { null: 0 };
+        let ends = 0;
+        m.on(e => {
+            if (e.type !== EVENTS.AT_END) return;
+            ends++;
+            if (e.trophy === null) { seen.null++; return; }
+            assert.ok(RANK[e.trophy], `知らない色 ${e.trophy}`);
+            assert.ok(RANK[e.trophy] <= setting, `設定${setting} で ${e.trophy}`);
+            seen[e.trophy] = (seen[e.trophy] || 0) + 1;
+        });
+        // AT 直撃 → 残り 3G → ハズレで終わらせる (前兆に重ならないよう規定ゲーム数をずらす) を 10,000 回
+        for (let i = 0; i < 10000; i++) {
+            m.debug.setGames(5);
+            m.debug.direct();
+            play(m, rng);
+            m.debug.atEndSoon();
+            let guard = 0;
+            while (m.snapshot().phase !== 'normal' && guard++ < 400) {
+                m.debug.setNextRole('none');
+                play(m, rng);
+            }
+            assert.equal(m.snapshot().phase, 'normal', `AT が終わらない (設定${setting} ${i}回目)`);
+        }
+        assert.equal(ends, 10000);
+        assert.ok(seen.null > 3000 && seen.null < 7000, `出る率 50% (null ${seen.null})`);
+        if (setting === 6) assert.ok(seen.rainbow > 0, '設定6 は虹が出る');
+    }
+});

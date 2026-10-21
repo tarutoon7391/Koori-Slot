@@ -61,7 +61,8 @@ function naviLine(stage) {
 }
 const pick = list => list[Math.floor(Math.random() * list.length)];
 
-export function createDirector({ sound, reels, onChange = () => {} }) {
+// onEpisode(n): エピソードBIG の第 n 話 (0 から) を見せはじめた (図鑑に数える)
+export function createDirector({ sound, reels, onChange = () => {}, onEpisode = () => {} }) {
     const v = {
         phase: 'normal',
         stage: { place: 'floor', floor: 1, state: 'low' },
@@ -471,6 +472,7 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
                 at: e.bonus === 'epbig', atLabel: atLabel(),
                 inAt: Boolean(e.inAt), boss: null, tokka: e.inAt && e.bonus === 'epbig'
             };
+            if (e.bonus === 'epbig') onEpisode(v.bonus.episode);
             setButton(e.bonus === 'epbig' ? 'rainbow' : 'gold');
             sound.play('fanfare');
             wait(ENTRY_MS - 400, () => setButton('white', { lit: false }));
@@ -634,7 +636,7 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
 
         [E.AT_END](e) {
             const a = v.at || { adds: 0, addTotal: 0, best: 0 };
-            v.atEnd = { games: e.games, payout: e.payout, adds: a.adds, addTotal: a.addTotal, best: a.best, hint: e.hint || 'team', since: now };
+            v.atEnd = { games: e.games, payout: e.payout, adds: a.adds, addTotal: a.addTotal, best: a.best, hint: e.hint || 'team', trophy: e.trophy || null, since: now };
             v.zencho = null;
             v.battle = null;
             v.at = null;
@@ -642,6 +644,7 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
             v.atCount = null;
             v.phase = 'normal';
             sound.play('atEnd');
+            if (e.trophy) after(1300, () => sound.play(e.trophy === 'rainbow' ? 'flashRainbow' : 'kakutei'));
             changed();
             wait(AT_END_MS, () => { v.atEnd = null; });
         }

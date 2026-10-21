@@ -543,8 +543,15 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
         endAt();
     }
 
+    // 設定示唆トロフィー: rate で出る・出ないを抽選し、出るときは設定ごとの重みで色を選ぶ (設定より上の色は重みが 0 なので出ない)。出ないときは null
+    function drawTrophy() {
+        const tr = config.show.trophy;
+        if (!tr || !rng.chance(tr.rate)) return null;
+        return rng.weighted(tr.weights[s.setting] || tr.weights[1]);
+    }
+
     function endAt() {
-        emit(E.AT_END, { games: s.at.total, payout: s.at.payout, hint: rng.weighted(config.show.hint[s.setting] || config.show.hint[1]) });
+        emit(E.AT_END, { games: s.at.total, payout: s.at.payout, hint: rng.weighted(config.show.hint[s.setting] || config.show.hint[1]), trophy: drawTrophy() });
         s.at = null;
         s.phase = 'normal';
         updateStage();

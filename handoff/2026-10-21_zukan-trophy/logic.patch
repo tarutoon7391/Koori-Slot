@@ -1,0 +1,51 @@
+diff --git a/src/logic/config.js b/src/logic/config.js
+index 7ca5399..0e4522e 100644
+--- a/src/logic/config.js
++++ b/src/logic/config.js
+@@ -152,6 +152,18 @@ export const CONFIG = {
+             win: { daishi: 10, zumitani: 15, runaya: 20, nozoema: 25, maou: 30 },
+             lose: { daishi: 45, zumitani: 30, runaya: 15, nozoema: 8, maou: 2 }
+         },
++        // 設定示唆トロフィー (AT 終了画面に落ちてくる)。rate: 出る率 / weights: 出たときの色 (設定ごと)【仮: 前作の値】
++        trophy: {
++            rate: 0.5,
++            weights: {
++                1: { white: 100 },
++                2: { white: 55, blue: 45 },
++                3: { white: 40, blue: 20, green: 40 },
++                4: { white: 30, blue: 15, green: 15, purple: 40 },
++                5: { white: 25, blue: 10, green: 10, purple: 15, red: 40 },
++                6: { white: 20, blue: 10, green: 10, purple: 10, red: 15, rainbow: 35 }
++            }
++        },
+         // AT 終了画面の設定示唆の画像 (設定ごと)【仮】
+         hint: {
+             1: { team: 80, fiveDX: 12, ask3: 6, muscle: 2 },
+diff --git a/src/logic/events.js b/src/logic/events.js
+index 156082d..74c5fb5 100644
+--- a/src/logic/events.js
++++ b/src/logic/events.js
+@@ -38,7 +38,7 @@ export const EVENTS = {
+     AT_MISS: 'at:miss',           // { attacker, enemy }  上乗せなしのレア役 (「ミス！」)
+     AT_BOSS: 'at:boss',           // { boss, final, win }  AT 中のボーナスの相手 (登場 / 勝利 / 敗北)
+     AT_JUDGE: 'at:judge',         // { win, bonus }  前兆中に AT のゲーム数がなくなったときの当落告知
+-    AT_END: 'at:end',             // { games, payout, hint }  hint: 設定示唆の画像
++    AT_END: 'at:end',             // { games, payout, hint, trophy }  hint: 設定示唆の画像 / trophy: 設定示唆トロフィーの色 (出ないときは null)
+ 
+     // ----- 上乗せ特化ゾーン -----
+     TOKKA_STOCK: 'tokka:stock',   // { stock }  特化ゾーンに当たった (当たったゲームの終わり)
+diff --git a/src/logic/machine.js b/src/logic/machine.js
+index 3908a82..1070661 100644
+--- a/src/logic/machine.js
++++ b/src/logic/machine.js
+@@ -466,7 +466,9 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+     }
+ 
+     function endAt() {
+-        emit(E.AT_END, { games: s.at.total, payout: s.at.payout, hint: rng.weighted(config.show.hint[s.setting] || config.show.hint[1]) });
++        const tr = config.show.trophy;
++        const trophy = rng.chance(tr.rate) ? rng.weighted(tr.weights[s.setting] || tr.weights[1]) : null;
++        emit(E.AT_END, { games: s.at.total, payout: s.at.payout, hint: rng.weighted(config.show.hint[s.setting] || config.show.hint[1]), trophy });
+         s.at = null;
+         s.phase = 'normal';
+         updateStage();

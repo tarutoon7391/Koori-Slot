@@ -1,0 +1,154 @@
+diff --git a/src/presentation/components/Cabinet.jsx b/src/presentation/components/Cabinet.jsx
+index ecd65f6..52b38a2 100644
+--- a/src/presentation/components/Cabinet.jsx
++++ b/src/presentation/components/Cabinet.jsx
+@@ -38,7 +38,7 @@ function Lcd({ game }) {
+     return <canvas ref={ref} className="lcd" aria-label="液晶" onPointerDown={onPointerDown} />;
+ }
+ 
+-function Reels({ game, nav }) {
++function Reels({ game, nav, stopped }) {
+     const ref = useRef(null);
+     useEffect(() => {
+         game.reels.attach(ref.current);
+@@ -49,13 +49,19 @@ function Reels({ game, nav }) {
+             window.removeEventListener('resize', onResize);
+         };
+     }, [game]);
+-    // 押し順ナビ (リールの上。画面設計書 5-1)
++    // 押し順ナビ (リールの上。画面設計書 5-1): 次に押すリールの数字だけ赤く光らせ、押したリールは暗くする
+     const order = nav ? [0, 1, 2].map(reel => nav.indexOf(reel) + 1) : null;
++    const nextReel = nav ? nav.find(reel => !stopped[reel]) : undefined;
++    const navClass = i => {
++        if (!order) return 'nav-num off';
++        if (stopped[i]) return 'nav-num done';
++        return i === nextReel ? 'nav-num first' : 'nav-num';
++    };
+     return (
+         <div className="reel-box">
+             <div className="nav" aria-live="polite">
+                 {[0, 1, 2].map(i => (
+-                    <span key={i} className={order ? (order[i] === 1 ? 'nav-num first' : 'nav-num') : 'nav-num off'}>
++                    <span key={i} className={navClass(i)}>
+                         {order ? order[i] : ''}
+                     </span>
+                 ))}
+@@ -101,7 +107,7 @@ export default function Cabinet({ game }) {
+             <div className="lcd-frame">
+                 <Lcd game={game} />
+             </div>
+-            <Reels game={game} nav={d.nav} />
++            <Reels game={game} nav={d.nav} stopped={stopped} />
+             <div className="leds">
+                 <span>CREDIT <b>{d.credit}</b></span>
+                 <span>PAYOUT <b>{d.lastPayout}</b></span>
+diff --git a/src/presentation/game.js b/src/presentation/game.js
+index b6067c3..0bd495d 100644
+--- a/src/presentation/game.js
++++ b/src/presentation/game.js
+@@ -106,6 +106,9 @@ export function createGame({ setting = 1 } = {}) {
+             keep({ kind: 'stop', reel });
+             return false;
+         }
++        // 押し順ナビとちがうリールを押したら警告 (ナビに従ってください)。止めるのは止める (押し順ベルなら取りこぼす)
++        const nav = director.snapshot().nav;
++        if (nav && reel !== nav.find(r => !stopped[r])) director.navWarning();
+         const last = stopped.filter(Boolean).length === 2;
+         if (last) director.holdForReels();
+         const press = reels.pressIndex(reel);
+@@ -129,7 +132,9 @@ export function createGame({ setting = 1 } = {}) {
+             if (i !== undefined) keep({ kind: 'stop', reel: i });
+             return false;
+         }
+-        const i = [0, 1, 2].find(r => !stopped[r] && !queued(r));
++        // 押し順ナビがあるときはナビの順、ないときは左から
++        const nav = director.snapshot().nav;
++        const i = (nav || [0, 1, 2]).find(r => !stopped[r] && !queued(r));
+         if (i !== undefined) return stop(i);
+         if (!stopped.every(Boolean)) return false;   // 残りの停止は順番待ち
+         return lever();
+diff --git a/src/presentation/lcd/director.js b/src/presentation/lcd/director.js
+index 2b15db1..3b24659 100644
+--- a/src/presentation/lcd/director.js
++++ b/src/presentation/lcd/director.js
+@@ -29,6 +29,7 @@ const LONG_PRESS_MS = 900;     // コオリハンマーの長押しでゲージ
+ const SELECT_MS = 10000;       // 特化ゾーンのパターンを選ぶ時間 (たったら、そのとき選んでいるほうで始める。画面設計書 6章の案)
+ const JUDGE_WAIT_MS = 4000;    // ラストジャッジで PUSH を待つ時間 (押さなくても進む)
+ const JUDGE_RESULT_MS = 2400;  // ラストジャッジの結果を見せる時間
++const NAV_WARN_MS = 1600;      // 「ナビに従ってください」を出す時間
+ 
+ // 特化ゾーンのパターンは、前に選んだほうを最初に選んでおく (このブラウザに覚えておく)
+ function savedPattern() {
+@@ -84,6 +85,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+         tokkaEnd: null,    // 特化ゾーン終了の画面
+         bossFx: null,      // AT 中のボーナスの相手の登場・勝利・敗北: { kind, boss, since }
+         judge: null,       // AT 0G の当落告知 (ラストジャッジ): { team, win, bonus, phase, since }
++        navWarn: null,     // 押し順ナビとちがう押し順で押したときの警告: { since }
+         at: null,
+         direct: null,
+         tenjo: null,
+@@ -780,6 +782,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+         if (v.atEnd) drawAtEnd(ctx, t, t - v.atEnd.since, v.atEnd);
+         if (v.tenjo) drawTenjo(ctx, t, t - v.tenjo.since, v.tenjo.who);
+         if (v.direct) drawDirect(ctx, t, t - v.direct.since, v.direct.phase);
++        // 押し順ナビの警告 (ナビに従ってください)
++        if (v.navWarn && t - v.navWarn.since < NAV_WARN_MS) {
++            const k = t - v.navWarn.since;
++            const blink = Math.floor(k / 160) % 2 === 0;
++            rect(ctx, 0, 62, W, 44, `rgba(120,0,10,${blink ? 0.88 : 0.7})`);
++            rect(ctx, 0, 62, W, 2, '#ff3a3a');
++            rect(ctx, 0, 104, W, 2, '#ff3a3a');
++            text(ctx, '⚠ ナビに従ってください', W / 2, 84, { size: 18, color: '#ffffff', lw: 4, stroke: '#3a0008' });
++        }
+         if (v.banner) {
+             rect(ctx, 0, 70, W, 40, 'rgba(0,0,0,.75)');
+             text(ctx, v.banner.text, W / 2, 90, { size: 16, color: v.banner.rainbow ? rainbow(ctx, 60, 0, 260, 0) : '#ffffff', lw: 4 });
+@@ -807,6 +818,11 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+                 pump();
+             }
+         },
++        // 押し順ナビとちがうリールを押した
++        navWarning() {
++            v.navWarn = { since: now };
++            sound.play('warn');
++        },
+         // PUSH ボタン
+         push() {
+             pressing = true;
+diff --git a/src/presentation/sound/sound.js b/src/presentation/sound/sound.js
+index b5ed234..f1a1c32 100644
+--- a/src/presentation/sound/sound.js
++++ b/src/presentation/sound/sound.js
+@@ -90,6 +90,8 @@ const SOUNDS = {
+     blackout: () => tone(110, 0, 0.8, { slideTo: 40, volume: 0.1, type: 'sawtooth' }),
+     fanfare: () => [784, 784, 784, 1047, 988, 1047, 1319].forEach((f, i) => tone(f, i * 0.12, 0.22, { volume: 0.08 })),
+     count: () => tone(880, 0, 0.12, { volume: 0.06 }),
++    // 押し順ナビとちがう押し順の警告 (低いブザーを2回)
++    warn: () => [0, 0.2].forEach(s => tone(196, s, 0.15, { volume: 0.09, type: 'square' })),
+     // 「こおりを狙え」: テンパイ (あおる音) / こおりくん揃い / AT確定 (専用の当たり音。声の代わり。画面設計書 7-2)
+     tenpai: () => [0, 0.16, 0.32].forEach(s => tone(880, s, 0.12, { slideTo: 1760, volume: 0.06, type: 'sawtooth' })),
+     kooriAlign: () => { noise(0, 0.25, 0.12); tone(2093, 0, 0.5, { volume: 0.09 }); tone(3136, 0.05, 0.6, { volume: 0.06, type: 'triangle' }); },
+diff --git a/src/presentation/styles.css b/src/presentation/styles.css
+index ae52593..fad36ea 100644
+--- a/src/presentation/styles.css
++++ b/src/presentation/styles.css
+@@ -134,7 +134,9 @@ body {
+     background: #2a3a5a;
+     border: 2px solid #fff;
+ }
+-.nav-num.first { background: #ff3a3a; }
++.nav-num.first { background: #ff3a3a; animation: nav-blink .5s ease-in-out infinite alternate; }
++.nav-num.done { background: #1a2230; border-color: #3a4656; color: #6a7686; }
++@keyframes nav-blink { to { box-shadow: 0 0 12px #ff3a3a; filter: brightness(1.25); } }
+ .nav-num.off { background: #111820; border-color: #1e2833; }
+ 
+ .reels {
+@@ -258,7 +260,7 @@ body {
+ .stop:active { transform: translateY(3px); box-shadow: 0 1px 0 #0a0e14; }
+ 
+ @media (prefers-reduced-motion: reduce) {
+-    .push.lit-rainbow, .push.waiting { animation: none; }
++    .push.lit-rainbow, .push.waiting, .nav-num.first { animation: none; }
+ }
+ 
+ /* ----- 横 (デバッグ) ----- */

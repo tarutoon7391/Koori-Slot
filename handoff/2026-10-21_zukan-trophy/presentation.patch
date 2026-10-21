@@ -1,0 +1,403 @@
+diff --git a/src/presentation/App.jsx b/src/presentation/App.jsx
+index a1f7c49..1e25a05 100644
+--- a/src/presentation/App.jsx
++++ b/src/presentation/App.jsx
+@@ -2,12 +2,43 @@
+ // 画面全体 (筐体・デバッグ)
+ // =====================================================================
+ 
+-import React, { useEffect, useMemo, useState } from 'react';
++import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+ import { createGame } from './game.js';
+ import Cabinet from './components/Cabinet.jsx';
+ import DebugPanel from './components/DebugPanel.jsx';
++import Zukan from './components/Zukan.jsx';
+ import { Sound } from './sound/sound.js';
+ 
++const CABINET_W = 560;   // 筐体のいちばん大きい幅
++const MARGIN = 24;       // 画面の上下に空ける分
++
++// 筐体がまるごと画面に収まるように縮める (2026-10-21 ユーザー指定: 開いたときに台が見切れないように)。
++// 中身はいつも同じ幅で並べて、高さが画面より大きいときだけ全体を縮小する (ボタンの位置もそのまま縮む)
++function useFitToScreen() {
++    const inner = useRef(null);
++    const [fit, setFit] = useState({ width: CABINET_W, scale: 1, height: null });
++    useLayoutEffect(() => {
++        const el = inner.current;
++        const update = () => {
++            const width = Math.min(CABINET_W, window.innerWidth - MARGIN);
++            el.style.width = `${width}px`;
++            const h = el.offsetHeight;
++            const scale = Math.min(1, (window.innerHeight - MARGIN) / h);
++            setFit(f => (f.width === width && f.scale === scale && f.height === h ? f : { width, scale, height: h }));
++        };
++        update();
++        const ro = new ResizeObserver(update);
++        ro.observe(el);
++        window.addEventListener('resize', update);
++        if (document.fonts) document.fonts.ready.then(update);
++        return () => {
++            ro.disconnect();
++            window.removeEventListener('resize', update);
++        };
++    }, []);
++    return { inner, fit };
++}
++
+ const KEYS = { z: 0, x: 1, c: 2, 1: 0, 2: 1, 3: 2, ArrowLeft: 0, ArrowDown: 1, ArrowRight: 2 };
+ 
+ export default function App() {
+@@ -17,6 +48,17 @@ export default function App() {
+         try { return localStorage.getItem('koori-slot-debug') !== '0'; } catch (e) { return true; }
+     });
+     const [muted, setMuted] = useState(Sound.muted);
++    const [showZukan, setShowZukan] = useState(false);
++    const [toasts, setToasts] = useState([]);
++    const { inner, fit } = useFitToScreen();
++
++    // 実績を解除したら、画面の上にお知らせを出す
++    useEffect(() => game.collection.onAchievement(a => {
++        const key = `${a.id}-${Date.now()}`;
++        setToasts(list => [...list, { key, a }]);
++        Sound.play('kakutei');
++        setTimeout(() => setToasts(list => list.filter(x => x.key !== key)), 4000);
++    }), [game]);
+ 
+     useEffect(() => game.subscribe(() => setTick(t => t + 1)), [game]);
+     useEffect(() => game.applyQuery(window.location.search), [game]);
+@@ -26,6 +68,7 @@ export default function App() {
+     useEffect(() => {
+         const onKey = e => {
+             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
++            if (document.querySelector('.zk-overlay')) return;   // 図鑑を開いているあいだは台を動かさない
+             if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowUp') {
+                 e.preventDefault();
+                 game.next();
+@@ -61,9 +104,14 @@ export default function App() {
+ 
+     return (
+         <div className="app">
+-            <Cabinet game={game} />
++            <div className="cab-fit" style={{ width: fit.width * fit.scale, height: fit.height ? fit.height * fit.scale : undefined }}>
++                <div ref={inner} className="cab-fit-inner" style={{ transform: fit.scale < 1 ? `scale(${fit.scale})` : undefined }}>
++                    <Cabinet game={game} />
++                </div>
++            </div>
+             <aside className="side">
+                 <div className="side-buttons">
++                    <button type="button" onClick={() => setShowZukan(true)}>★ 図鑑</button>
+                     <button type="button" onClick={toggleMute}>{muted ? '音: OFF' : '音: ON'}</button>
+                     <button type="button" onClick={() => setShowDebug(s => !s)}>{showDebug ? 'デバッグを閉じる' : 'デバッグ'}</button>
+                 </div>
+@@ -72,6 +120,12 @@ export default function App() {
+                 </p>
+                 {showDebug && <DebugPanel game={game} />}
+             </aside>
++            {showZukan && <Zukan collection={game.collection} onClose={() => setShowZukan(false)} />}
++            <div className="toasts" aria-live="polite">
++                {toasts.map(({ key, a }) => (
++                    <div key={key} className="toast"><b>★ 実績解除</b>{a.name}<small>{a.desc}</small></div>
++                ))}
++            </div>
+         </div>
+     );
+ }
+diff --git a/src/presentation/game.js b/src/presentation/game.js
+index 343816c..b6067c3 100644
+--- a/src/presentation/game.js
++++ b/src/presentation/game.js
+@@ -6,6 +6,7 @@
+ // =====================================================================
+ 
+ import { createMachine, EVENTS, STRIPS } from '../logic/index.js';
++import { createCollection } from './collection/collection.js';
+ import { createDirector } from './lcd/director.js';
+ import { createReelView } from './reels/reelView.js';
+ import { Sound } from './sound/sound.js';
+@@ -18,8 +19,15 @@ export function createGame({ setting = 1 } = {}) {
+     const reels = createReelView(STRIPS);
+     const listeners = new Set();
+     const notify = () => listeners.forEach(fn => fn());
+-    const director = createDirector({ sound: Sound, reels, onChange: notify });
++    // 図鑑・実績・記録 (イベントから数えて、このブラウザに保存する。ゲームの終わりごとに保存)
++    const collection = createCollection();
++    const director = createDirector({ sound: Sound, reels, onChange: notify, onEpisode: n => collection.recordEpisode(n) });
+     machine.on(e => director.receive(e));
++    machine.on(e => {
++        collection.record(e);
++        if (e.type === EVENTS.GAME_END) collection.save();
++    });
++    window.addEventListener('pagehide', () => collection.save());
+ 
+     let stopped = [true, true, true];
+     let spunAt = 0;
+@@ -187,6 +195,7 @@ export function createGame({ setting = 1 } = {}) {
+     const game = {
+         machine,
+         director,
++        collection,
+         reels,
+         lever,
+         stop,
+diff --git a/src/presentation/lcd/at.js b/src/presentation/lcd/at.js
+index 1501822..1c9ff58 100644
+--- a/src/presentation/lcd/at.js
++++ b/src/presentation/lcd/at.js
+@@ -18,12 +18,12 @@ const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+ 
+ // 上乗せの相手 (摩天楼に住み着いた敵。キャラ設計書 6章)
+ export const ENEMY_NAMES = { harry: 'ハリー', urashima: '浦の島重蔵', makibikon: 'マキビコンMk-4', nakata: '奈架多ドラゴン', goldDog: 'ゴールド金面犬' };
+-// 攻撃するキャラと、こおりくんの武器 (キャラ設計書 2章。ボタン操作: ソード PUSH 1回 / ハンマー 長押し / 絶対殺す剣 PUSH 4回)
++// 攻撃するキャラの技 (前作の必殺技) と、こおりくんの武器 (キャラ設計書 2章。ボタン操作: ソード PUSH 1回 / ハンマー 長押し / 絶対殺す剣 PUSH 4回)
+ export const ATTACKS = {
+-    yasu: { who: 'yasu', name: 'やすさん' },
+-    tamu: { who: 'tamu', name: 'たむさん' },
+-    dake: { who: 'dake', name: 'だけさん' },
+-    onioni: { who: 'onioni', name: 'おにおに' },
++    yasu: { who: 'yasu', name: 'やすパンチ' },
++    tamu: { who: 'tamu', name: 'たむキック' },
++    dake: { who: 'dake', name: 'だけチョップ' },
++    onioni: { who: 'onioni', name: '鬼鬼の金棒' },
+     sword: { who: 'koori', name: 'コオリソード', weapon: 'sword', button: 'push', pushes: 1 },
+     hammer: { who: 'koori', name: 'コオリハンマー', weapon: 'hammer', button: 'long' },
+     kill: { who: 'koori', name: '四天王絶対殺す剣', weapon: 'kill', button: 'push', pushes: 4 }
+@@ -174,7 +174,7 @@ export function drawAttack(ctx, t, a) {
+     }
+ 
+     // 名前
+-    const label = atk.weapon ? atk.name : `${atk.name}の攻撃！`;
++    const label = atk.weapon ? atk.name : `${atk.name}！`;
+     text(ctx, label, 100, 36, { size: atk.weapon === 'kill' ? 13 : 12, color: atk.weapon === 'kill' ? rainbow(ctx, 30, 0, 170, 0) : atk.weapon ? '#bff0ff' : '#ffffff', lw: 4 });
+     if (a.phase === 'appear' || a.phase === 'push') text(ctx, `${ENEMY_NAMES[a.enemy] || ''} 出現！`, W - 10, 36, { size: 11, align: 'right', color: '#ffd0d0', lw: 4, stroke: '#3a0010' });
+ 
+@@ -220,7 +220,7 @@ function drawPushPrompt(ctx, t, atk, a) {
+ }
+ 
+ // ----- 終了画面 -----
+-// end: { games, payout, adds, addTotal, best, hint }
++// end: { games, payout, adds, addTotal, best, hint, trophy }
+ export const END_MS = 4000;
+ export function drawAtEnd(ctx, t, since, end) {
+     rect(ctx, 0, 0, W, H, vgrad(ctx, 0, H, ['#0d1117', '#1a2a3a']));
+@@ -239,6 +239,12 @@ export function drawAtEnd(ctx, t, since, end) {
+         rect(ctx, 16, 54 + i * 24, 134, 1, 'rgba(255,255,255,.12)');
+     });
+     drawHint(ctx, t, end.hint || 'team');
++    // 設定示唆トロフィー: 左下に落ちてくる (前作と同じ。色は内部処理の at:end の trophy)
++    if (end.trophy && since > 900) {
++        const fall = Math.min(1, (since - 900) / 400);
++        const bounce = fall < 1 ? 0 : Math.abs(Math.sin((since - 1300) / 90)) * Math.max(0, 4 - (since - 1300) / 100);
++        drawTrophy(ctx, t, 24, -20 + fall * 197 - bounce, end.trophy, 1.2);
++    }
+ }
+ 
+ // ----- 終了画面の設定示唆の画像 (画面設計書 7-1。どれを出すかは内部処理の at:end の hint) -----
+@@ -308,3 +314,38 @@ export function drawAtJudge(ctx, t, j) {
+         text(ctx, 'RASH 終了…', W / 2, 60, { size: 24, color: '#a0b0c0', lw: 5, stroke: '#101018' });
+     }
+ }
++
++// ----- 設定示唆トロフィー (前作と同じ色: 白・青・緑・紫・赤・虹) -----
++// (x, ground) は台座の下の真ん中。scale は 1 で 16x20 ドット
++const TROPHY_COLORS = { white: ['#ffffff', '#c8d0da', '#8a96a6'], blue: ['#9ac8ff', '#3a86ff', '#1a4ab0'], green: ['#a0f0b0', '#40c060', '#1a7a3a'], purple: ['#e0c0ff', '#a060ff', '#5a2aa0'], red: ['#ffb0b0', '#ff3a4a', '#a01020'] };
++export function drawTrophy(ctx, t, x, ground, color, scale = 1) {
++    const s = scale;
++    const left = x - 8 * s, top = ground - 20 * s;
++    const r = (rx, ry, w, h, fill) => rect(ctx, left + rx * s, top + ry * s, w * s, h * s, fill);
++    let [light, main, dark] = TROPHY_COLORS[color] || TROPHY_COLORS.white;
++    if (color === 'rainbow') {
++        const g = rainbow(ctx, left + ((t / 8) % (16 * s)) - 16 * s, top, left + ((t / 8) % (16 * s)) + 16 * s, top + 20 * s);
++        light = '#ffffff';
++        main = g;
++        dark = '#5a2aa0';
++    }
++    // 取っ手
++    r(0, 3, 2, 6, dark);
++    r(14, 3, 2, 6, dark);
++    r(1, 8, 3, 2, dark);
++    r(12, 8, 3, 2, dark);
++    // 杯
++    r(2, 1, 12, 9, main);
++    r(3, 10, 10, 2, main);
++    r(5, 12, 6, 2, dark);
++    r(3, 2, 2, 6, light);
++    r(2, 0, 12, 1, dark);
++    // 脚と台座
++    r(7, 14, 2, 3, dark);
++    r(4, 17, 8, 3, main);
++    r(4, 19, 8, 1, dark);
++    if (color === 'rainbow' && Math.floor(t / 200) % 2) {
++        text(ctx, '✦', left + 16 * s, top + 2 * s, { size: 6 * s, color: '#ffffff', stroke: null });
++        text(ctx, '✦', left - 1 * s, top + 12 * s, { size: 5 * s, color: '#ffffff', stroke: null });
++    }
++}
+diff --git a/src/presentation/lcd/director.js b/src/presentation/lcd/director.js
+index 075e5c2..2b15db1 100644
+--- a/src/presentation/lcd/director.js
++++ b/src/presentation/lcd/director.js
+@@ -61,7 +61,8 @@ function naviLine(stage) {
+ }
+ const pick = list => list[Math.floor(Math.random() * list.length)];
+ 
+-export function createDirector({ sound, reels, onChange = () => {} }) {
++// onEpisode(n): エピソードBIG の第 n 話 (0 から) を見せはじめた (図鑑に数える)
++export function createDirector({ sound, reels, onChange = () => {}, onEpisode = () => {} }) {
+     const v = {
+         phase: 'normal',
+         stage: { place: 'floor', floor: 1, state: 'low' },
+@@ -471,6 +472,7 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
+                 at: e.bonus === 'epbig', atLabel: atLabel(),
+                 inAt: Boolean(e.inAt), boss: null, tokka: e.inAt && e.bonus === 'epbig'
+             };
++            if (e.bonus === 'epbig') onEpisode(v.bonus.episode);
+             setButton(e.bonus === 'epbig' ? 'rainbow' : 'gold');
+             sound.play('fanfare');
+             wait(ENTRY_MS - 400, () => setButton('white', { lit: false }));
+@@ -628,7 +630,7 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
+ 
+         [E.AT_END](e) {
+             const a = v.at || { adds: 0, addTotal: 0, best: 0 };
+-            v.atEnd = { games: e.games, payout: e.payout, adds: a.adds, addTotal: a.addTotal, best: a.best, hint: e.hint || 'team', since: now };
++            v.atEnd = { games: e.games, payout: e.payout, adds: a.adds, addTotal: a.addTotal, best: a.best, hint: e.hint || 'team', trophy: e.trophy || null, since: now };
+             v.zencho = null;
+             v.battle = null;
+             v.at = null;
+@@ -636,6 +638,7 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
+             v.atCount = null;
+             v.phase = 'normal';
+             sound.play('atEnd');
++            if (e.trophy) after(1300, () => sound.play(e.trophy === 'rainbow' ? 'flashRainbow' : 'kakutei'));
+             changed();
+             wait(AT_END_MS, () => { v.atEnd = null; });
+         }
+diff --git a/src/presentation/styles.css b/src/presentation/styles.css
+index 7c10d99..ae52593 100644
+--- a/src/presentation/styles.css
++++ b/src/presentation/styles.css
+@@ -301,3 +301,126 @@ body {
+ .debug-info dd { margin: 0; }
+ .debug-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+ .debug-buttons button { padding: 5px 9px; font-size: 12px; }
++
++/* ----- 筐体を画面に収める (App.jsx の useFitToScreen) ----- */
++.cab-fit { flex: none; max-width: 100%; }
++.cab-fit-inner { transform-origin: top left; }
++.cab-fit-inner .cabinet { width: 100%; }
++
++/* ----- 実績解除のお知らせ ----- */
++.toasts {
++    position: fixed;
++    top: 12px;
++    left: 50%;
++    transform: translateX(-50%);
++    display: grid;
++    gap: 8px;
++    z-index: 30;
++    pointer-events: none;
++}
++.toast {
++    display: grid;
++    gap: 2px;
++    min-width: 240px;
++    padding: 10px 16px;
++    background: linear-gradient(180deg, #2a2000, #120c00);
++    border: 1px solid #ffd23a;
++    border-radius: 8px;
++    box-shadow: 0 6px 24px rgba(0, 0, 0, .6), 0 0 18px rgba(255, 210, 58, .35);
++    font-weight: 700;
++    animation: toast-in .35s ease-out;
++}
++.toast b { color: #ffd23a; font: 400 12px var(--display); letter-spacing: .06em; }
++.toast small { color: var(--muted); font-weight: 400; font-size: 12px; }
++@keyframes toast-in { from { transform: translateY(-12px); opacity: 0; } }
++
++/* ----- 図鑑 ----- */
++.zk-overlay {
++    position: fixed;
++    inset: 0;
++    z-index: 20;
++    background: rgba(2, 4, 8, .72);
++    display: grid;
++    place-items: center;
++    padding: 16px;
++}
++.zukan {
++    width: min(100%, 760px);
++    max-height: calc(100dvh - 32px);
++    display: flex;
++    flex-direction: column;
++    background: #0d131b;
++    border: 1px solid #2e3c4c;
++    border-radius: 12px;
++    box-shadow: 0 20px 60px rgba(0, 0, 0, .7);
++    overflow: hidden;
++}
++.zk-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 6px; }
++.zk-head h2 { margin: 0; font: 700 20px var(--body); color: #ffd23a; }
++.zk-close { font-size: 22px; line-height: 1; padding: 4px 10px; color: var(--text); background: #1a2430; border: 1px solid #2e3c4c; border-radius: 6px; cursor: pointer; }
++.zk-tabs { flex: none; display: flex; gap: 4px; padding: 0 12px; overflow-x: auto; border-bottom: 1px solid #1e2a38; }
++.zk-tabs button {
++    font: 700 13px var(--body);
++    color: var(--muted);
++    background: none;
++    border: 0;
++    border-bottom: 3px solid transparent;
++    padding: 8px 10px;
++    cursor: pointer;
++    white-space: nowrap;
++}
++.zk-tabs button[aria-selected="true"] { color: #fff; border-bottom-color: var(--ice); }
++.zk-body { padding: 14px 16px 18px; overflow-y: auto; }
++.zk-lead { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
++.zk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
++.zk-card {
++    display: grid;
++    justify-items: center;
++    gap: 3px;
++    padding: 8px 6px 10px;
++    background: #121a23;
++    border: 1px solid #263443;
++    border-radius: 8px;
++    color: var(--text);
++    font: inherit;
++    cursor: pointer;
++    text-align: center;
++}
++div.zk-card { cursor: default; }
++.zk-card:hover { border-color: var(--ice); }
++.zk-card.locked { opacity: .75; }
++.zk-art { image-rendering: pixelated; border-radius: 4px; background: #13283a; }
++.zk-name { font-weight: 700; font-size: 13px; line-height: 1.35; }
++.zk-name small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); }
++.zk-group { font-size: 11px; color: var(--muted); }
++.zk-count { font-size: 12px; color: var(--ice); font-variant-numeric: tabular-nums; white-space: nowrap; }
++.zk-small { font-size: 11.5px; color: var(--muted); }
++.zk-list { display: grid; gap: 6px; }
++.zk-row {
++    display: grid;
++    grid-template-columns: auto 1fr auto;
++    align-items: center;
++    gap: 10px;
++    padding: 6px 10px;
++    background: #121a23;
++    border: 1px solid #263443;
++    border-radius: 8px;
++}
++.zk-row.locked { color: var(--muted); }
++.zk-row.done { border-color: #6a5a10; background: #1a1608; }
++.zk-star { font-size: 18px; color: #ffd23a; }
++.zk-ep { font: 400 13px var(--display); color: #ffb0a0; }
++.zk-trophies { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
++.zk-trophy { display: grid; justify-items: center; gap: 3px; padding: 10px 6px; background: #121a23; border: 1px solid #263443; border-radius: 8px; text-align: center; }
++.zk-records { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; margin: 0; font-size: 14px; }
++.zk-records dt { color: var(--muted); }
++.zk-records dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
++.zk-reset { margin-top: 18px; font: 700 12px var(--body); color: #ff9a9a; background: #2a1014; border: 1px solid #5a2028; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
++.zk-detail { display: grid; gap: 12px; }
++.zk-back { justify-self: start; font: 700 13px var(--body); color: var(--text); background: #1a2430; border: 1px solid #2e3c4c; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
++.zk-detail-body { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; }
++.zk-detail h3 { margin: 0; font: 700 22px var(--body); }
++.zk-title { margin: 6px 0 0; color: #ffd23a; font-weight: 700; }
++.zk-text { margin: 0; line-height: 1.85; font-size: 14px; }
++.zk-locked { color: var(--muted); }
++@media (max-width: 520px) { .zk-detail-body { grid-template-columns: 1fr; justify-items: center; text-align: center; } }

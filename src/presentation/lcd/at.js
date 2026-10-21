@@ -18,12 +18,12 @@ const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
 
 // 上乗せの相手 (摩天楼に住み着いた敵。キャラ設計書 6章)
 export const ENEMY_NAMES = { harry: 'ハリー', urashima: '浦の島重蔵', makibikon: 'マキビコンMk-4', nakata: '奈架多ドラゴン', goldDog: 'ゴールド金面犬' };
-// 攻撃するキャラと、こおりくんの武器 (キャラ設計書 2章。ボタン操作: ソード PUSH 1回 / ハンマー 長押し / 絶対殺す剣 PUSH 4回)
+// 攻撃するキャラの技 (前作の必殺技) と、こおりくんの武器 (キャラ設計書 2章。ボタン操作: ソード PUSH 1回 / ハンマー 長押し / 絶対殺す剣 PUSH 4回)
 export const ATTACKS = {
-    yasu: { who: 'yasu', name: 'やすさん' },
-    tamu: { who: 'tamu', name: 'たむさん' },
-    dake: { who: 'dake', name: 'だけさん' },
-    onioni: { who: 'onioni', name: 'おにおに' },
+    yasu: { who: 'yasu', name: 'やすパンチ' },
+    tamu: { who: 'tamu', name: 'たむキック' },
+    dake: { who: 'dake', name: 'だけチョップ' },
+    onioni: { who: 'onioni', name: '鬼鬼の金棒' },
     sword: { who: 'koori', name: 'コオリソード', weapon: 'sword', button: 'push', pushes: 1 },
     hammer: { who: 'koori', name: 'コオリハンマー', weapon: 'hammer', button: 'long' },
     kill: { who: 'koori', name: '四天王絶対殺す剣', weapon: 'kill', button: 'push', pushes: 4 }
@@ -174,7 +174,7 @@ export function drawAttack(ctx, t, a) {
     }
 
     // 名前
-    const label = atk.weapon ? atk.name : `${atk.name}の攻撃！`;
+    const label = atk.weapon ? atk.name : `${atk.name}！`;
     text(ctx, label, 100, 36, { size: atk.weapon === 'kill' ? 13 : 12, color: atk.weapon === 'kill' ? rainbow(ctx, 30, 0, 170, 0) : atk.weapon ? '#bff0ff' : '#ffffff', lw: 4 });
     if (a.phase === 'appear' || a.phase === 'push') text(ctx, `${ENEMY_NAMES[a.enemy] || ''} 出現！`, W - 10, 36, { size: 11, align: 'right', color: '#ffd0d0', lw: 4, stroke: '#3a0010' });
 
@@ -220,7 +220,7 @@ function drawPushPrompt(ctx, t, atk, a) {
 }
 
 // ----- 終了画面 -----
-// end: { games, payout, adds, addTotal, best, hint }
+// end: { games, payout, adds, addTotal, best, hint, trophy }
 export const END_MS = 4000;
 export function drawAtEnd(ctx, t, since, end) {
     rect(ctx, 0, 0, W, H, vgrad(ctx, 0, H, ['#0d1117', '#1a2a3a']));
@@ -239,6 +239,12 @@ export function drawAtEnd(ctx, t, since, end) {
         rect(ctx, 16, 54 + i * 24, 134, 1, 'rgba(255,255,255,.12)');
     });
     drawHint(ctx, t, end.hint || 'team');
+    // 設定示唆トロフィー: 左下に落ちてくる (前作と同じ。色は内部処理の at:end の trophy)
+    if (end.trophy && since > 900) {
+        const fall = Math.min(1, (since - 900) / 400);
+        const bounce = fall < 1 ? 0 : Math.abs(Math.sin((since - 1300) / 90)) * Math.max(0, 4 - (since - 1300) / 100);
+        drawTrophy(ctx, t, 24, -20 + fall * 197 - bounce, end.trophy, 1.2);
+    }
 }
 
 // ----- 終了画面の設定示唆の画像 (画面設計書 7-1。どれを出すかは内部処理の at:end の hint) -----
@@ -306,5 +312,40 @@ export function drawAtJudge(ctx, t, j) {
         ch(ctx, 'kooriDown', 80, 140, { scale: 3 });
         rect(ctx, 0, 0, W, H, 'rgba(0,0,30,.4)');
         text(ctx, 'RASH 終了…', W / 2, 60, { size: 24, color: '#a0b0c0', lw: 5, stroke: '#101018' });
+    }
+}
+
+// ----- 設定示唆トロフィー (前作と同じ色: 白・青・緑・紫・赤・虹) -----
+// (x, ground) は台座の下の真ん中。scale は 1 で 16x20 ドット
+const TROPHY_COLORS = { white: ['#ffffff', '#c8d0da', '#8a96a6'], blue: ['#9ac8ff', '#3a86ff', '#1a4ab0'], green: ['#a0f0b0', '#40c060', '#1a7a3a'], purple: ['#e0c0ff', '#a060ff', '#5a2aa0'], red: ['#ffb0b0', '#ff3a4a', '#a01020'] };
+export function drawTrophy(ctx, t, x, ground, color, scale = 1) {
+    const s = scale;
+    const left = x - 8 * s, top = ground - 20 * s;
+    const r = (rx, ry, w, h, fill) => rect(ctx, left + rx * s, top + ry * s, w * s, h * s, fill);
+    let [light, main, dark] = TROPHY_COLORS[color] || TROPHY_COLORS.white;
+    if (color === 'rainbow') {
+        const g = rainbow(ctx, left + ((t / 8) % (16 * s)) - 16 * s, top, left + ((t / 8) % (16 * s)) + 16 * s, top + 20 * s);
+        light = '#ffffff';
+        main = g;
+        dark = '#5a2aa0';
+    }
+    // 取っ手
+    r(0, 3, 2, 6, dark);
+    r(14, 3, 2, 6, dark);
+    r(1, 8, 3, 2, dark);
+    r(12, 8, 3, 2, dark);
+    // 杯
+    r(2, 1, 12, 9, main);
+    r(3, 10, 10, 2, main);
+    r(5, 12, 6, 2, dark);
+    r(3, 2, 2, 6, light);
+    r(2, 0, 12, 1, dark);
+    // 脚と台座
+    r(7, 14, 2, 3, dark);
+    r(4, 17, 8, 3, main);
+    r(4, 19, 8, 1, dark);
+    if (color === 'rainbow' && Math.floor(t / 200) % 2) {
+        text(ctx, '✦', left + 16 * s, top + 2 * s, { size: 6 * s, color: '#ffffff', stroke: null });
+        text(ctx, '✦', left - 1 * s, top + 12 * s, { size: 5 * s, color: '#ffffff', stroke: null });
     }
 }

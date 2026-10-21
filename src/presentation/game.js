@@ -6,6 +6,7 @@
 // =====================================================================
 
 import { createMachine, EVENTS, STRIPS } from '../logic/index.js';
+import { createCollection } from './collection/collection.js';
 import { createDirector } from './lcd/director.js';
 import { createReelView } from './reels/reelView.js';
 import { Sound } from './sound/sound.js';
@@ -18,8 +19,15 @@ export function createGame({ setting = 1 } = {}) {
     const reels = createReelView(STRIPS);
     const listeners = new Set();
     const notify = () => listeners.forEach(fn => fn());
-    const director = createDirector({ sound: Sound, reels, onChange: notify });
+    // 図鑑・実績・記録 (イベントから数えて、このブラウザに保存する。ゲームの終わりごとに保存)
+    const collection = createCollection();
+    const director = createDirector({ sound: Sound, reels, onChange: notify, onEpisode: n => collection.recordEpisode(n) });
     machine.on(e => director.receive(e));
+    machine.on(e => {
+        collection.record(e);
+        if (e.type === EVENTS.GAME_END) collection.save();
+    });
+    window.addEventListener('pagehide', () => collection.save());
 
     let stopped = [true, true, true];
     let spunAt = 0;
@@ -187,6 +195,7 @@ export function createGame({ setting = 1 } = {}) {
     const game = {
         machine,
         director,
+        collection,
         reels,
         lever,
         stop,

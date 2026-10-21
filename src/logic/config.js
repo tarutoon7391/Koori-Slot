@@ -173,6 +173,19 @@ export const CONFIG = {
             win: { daishi: 10, zumitani: 15, runaya: 20, nozoema: 25, maou: 30 },
             lose: { daishi: 45, zumitani: 30, runaya: 15, nozoema: 8, maou: 2 }
         },
+        // 設定示唆トロフィー (AT 終了画面の左下に落ちてくる。演出側の依頼 handoff/2026-10-21_zukan-trophy)。
+        // rate: 出る率 / weights: 出たときの色の重み (設定ごと。設定より上の色は 0 = 出ない)【仮: 前作の値】
+        trophy: {
+            rate: 0.5,
+            weights: {
+                1: { white: 100 },
+                2: { white: 55, blue: 45 },
+                3: { white: 40, blue: 20, green: 40 },
+                4: { white: 30, blue: 15, green: 15, purple: 40 },
+                5: { white: 25, blue: 10, green: 10, purple: 15, red: 40 },
+                6: { white: 20, blue: 10, green: 10, purple: 10, red: 15, rainbow: 35 }
+            }
+        },
         // AT 終了画面の設定示唆の画像 (設定ごと)【仮】
         hint: {
             1: { team: 80, fiveDX: 12, ask3: 6, muscle: 2 },

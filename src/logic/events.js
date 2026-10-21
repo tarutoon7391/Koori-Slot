@@ -38,7 +38,7 @@ export const EVENTS = {
     AT_MISS: 'at:miss',           // { attacker, enemy }  上乗せなしのレア役 (「ミス！」)
     AT_BOSS: 'at:boss',           // { boss, final, win }  AT 中のボーナスの相手 (登場 / 勝利 / 敗北)
     AT_JUDGE: 'at:judge',         // { win, bonus }  前兆中に AT のゲーム数がなくなったときの当落告知
-    AT_END: 'at:end',             // { games, payout, hint }  hint: 設定示唆の画像
+    AT_END: 'at:end',             // { games, payout, hint, trophy }  hint: 設定示唆の画像 / trophy: 設定示唆トロフィーの色 'white' | 'blue' | 'green' | 'purple' | 'red' | 'rainbow' (出ないときは null。設定より上の色は出ない)
 
     // ----- 上乗せ特化ゾーン -----
     TOKKA_STOCK: 'tokka:stock',   // { stock }  特化ゾーンに当たった (当たったゲームの終わり)
