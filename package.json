@@ -12,7 +12,8 @@
     "prestart": "npm run build",
     "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}",
     "test": "node --test \"tests/**/*.test.js\"",
-    "sim": "node tools/simulate.js"
+    "sim": "node tools/simulate.js",
+    "dump": "node tools/dump-logic.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
