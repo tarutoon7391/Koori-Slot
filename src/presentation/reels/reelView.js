@@ -129,12 +129,17 @@ export function createReelView(strips) {
             }
             ctx.restore();
         });
-        // 中段のライン
+        // 入賞ライン: 中段 (リプレイ・ボーナス・こおりくん) と右下がり (ベル)。内部処理 v0.3 (docs/events.md) に合わせて右下がりを足した (要確認)
         ctx.strokeStyle = 'rgba(255, 60, 60, .35)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(0, cell * 1.5);
         ctx.lineTo(w, cell * 1.5);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255, 220, 60, .3)';
+        ctx.beginPath();
+        ctx.moveTo(0, cell * 0.5);
+        ctx.lineTo(w, cell * 2.5);
         ctx.stroke();
     }
 

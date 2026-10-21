@@ -478,6 +478,9 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
 
         [E.BONUS_GAME](e) {
             if (v.bonus) v.bonus.left = e.left;
+            // 内部処理 v0.3: ボーナス中の押し順ベルのナビ (docs/events.md)。AT 中と同じく筐体のナビに出す (要確認)
+            v.nav = e.nav || null;
+            changed();
         },
 
         // 「こおりを狙え」カットイン。色は内部処理が抽選する (成功率は未定)。win は見せ方には使わず、リールの出目で判定する
@@ -594,6 +597,9 @@ export function createDirector({ sound, reels, onChange = () => {} }) {
 
         [E.TOKKA_GAME](e) {
             if (v.tokka) v.tokka.pending = { ...e };
+            // 内部処理 v0.3: 特化ゾーン中の押し順ベルのナビ (docs/events.md)。AT 中と同じく筐体のナビに出す (要確認)
+            v.nav = e.nav || null;
+            changed();
         },
 
         [E.TOKKA_SET](e) {

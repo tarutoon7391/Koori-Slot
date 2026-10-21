@@ -30,14 +30,17 @@ export function gridAt(tops) {
     return tops.map((top, reel) => windowAt(reel, top));
 }
 
-// 中段 (入賞ラインは中段1本) の入賞。なければ null
-// こおりくん揃いは、エピソードBIG の入賞も「こおりを狙え」の揃いも 'koori' (仕様書 2026-10-21。BAR・BAR・BAR は役ではない)
-export function middleWin(cols) {
+// 入賞ライン (2026-10-21 変更: 中段 + 右下がりの2本)。なければ null
+//   中段: リプレイ揃い 'replay' / 7・7・7 'big' / 7・7・BAR 'reg' / こおりくん揃い 'koori' (エピソードBIG の入賞も「こおりを狙え」の揃いも 'koori')
+//   右下がり (左上段・中中段・右下段): ベル揃い 'bell'。中段のベル3つは入賞ではない (作らない)
+// 払い出しは役で判定する (チェリー・スイカはラインに関係なく払い出す)
+export function lineWin(cols) {
     const [a, b, c] = cols.map(col => col[1]);
     if (a === b && b === c) {
-        if (a === 'bell' || a === 'replay' || a === 'koori') return a;
+        if (a === 'replay' || a === 'koori') return a;
         if (a === 'seven') return 'big';
     }
     if (a === 'seven' && b === 'seven' && c === 'bar') return 'reg';
+    if (cols[0][0] === 'bell' && cols[1][1] === 'bell' && cols[2][2] === 'bell') return 'bell';
     return null;
 }

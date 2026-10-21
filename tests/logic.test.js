@@ -3,8 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMachine, EVENTS, REEL_LENGTH, STRIPS } from '../src/logic/index.js';
 import { CONFIG } from '../src/logic/config.js';
-import { SHAPES, combosFor, createReelControl, bellShape, kooriGaseShape } from '../src/logic/reelControl.js';
-import { BONUS_SYMBOLS, gridAt, middleWin } from '../src/logic/reels.js';
+import { SHAPES, LEFT_WINDOW, combosFor, createReelControl, bellShape, kooriGaseShape } from '../src/logic/reelControl.js';
+import { BONUS_SYMBOLS, gridAt, lineWin } from '../src/logic/reels.js';
 import { createRng } from '../src/logic/rng.js';
 
 const ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
@@ -40,11 +40,11 @@ test('どの出目の形も、どこを押しても作れる (ガセ狙え・ベ
     }
 });
 
-test('ベル・リプレイ・ボーナスは中段にそろう (エピソードBIG はこおりくん揃い)', () => {
+test('リプレイ・ボーナスは中段に、ベルは右下がりにそろう (エピソードBIG はこおりくん揃い)', () => {
     for (const [shape, win] of [['bell', 'bell'], ['replay', 'replay'], ['big', 'big'], ['reg', 'reg'], ['epbig', 'koori'], ['koori', 'koori']]) {
         const ctrl = createReelControl(shape);
         [0, 1, 2].forEach(reel => ctrl.stop(reel, 7));
-        assert.equal(middleWin(gridAt(ctrl.tops)), win);
+        assert.equal(lineWin(gridAt(ctrl.tops)), win);
     }
 });
 
@@ -71,7 +71,7 @@ test('中段チェリーは中段にボーナス図柄が一直線にならな�
     for (const tops of combosFor('midCherry')) {
         const cols = gridAt(tops);
         assert.ok(!cols.every(col => isBonus(col[1])), `中段チェリー ${tops}`);
-        assert.equal(middleWin(cols), null);
+        assert.equal(lineWin(cols), null);
     }
     for (const tops of combosFor('strongCherry')) {
         const cols = gridAt(tops);
@@ -88,7 +88,7 @@ test('チャンス目A はベルの小V で、中段は入賞しない', () => {
         assert.equal(cols[0][0], 'bell');
         assert.equal(cols[1][1], 'bell');
         assert.equal(cols[2][0], 'bell');
-        assert.equal(middleWin(cols), null);
+        assert.equal(lineWin(cols), null);
     }
 });
 
@@ -99,7 +99,7 @@ test('ガセ「狙え」: 中押しでは中リール中段にこおりくんが
             const ctrl = createReelControl(kooriGaseShape);
             order.forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
             const cols = gridAt(ctrl.tops);
-            assert.notEqual(middleWin(cols), 'koori', `揃った ${order}`);
+            assert.notEqual(lineWin(cols), 'koori', `揃った ${order}`);
             if (order[0] === 1) {
                 assert.notEqual(cols[1][1], 'koori', `中押しで中リール中段がこおりくん ${order}`);
                 assert.ok(!cols.some(col => col.includes('koori')), `中押しで枠内にこおりくん ${order}`);
@@ -117,7 +117,7 @@ test('ガセ「狙え」: 中押しでは中リール中段にこおりくんが
     }
 });
 
-test('押し順ベルの形: 正解の順なら中段ベル揃い、外れた時点でベルこぼし (中段にベルが2つ)。第1停止がどこでもこぼし目が作れる', () => {
+test('押し順ベルの形: 正解の順なら右下がりベル揃い、外れた時点でベルこぼし (右下がりテンパイハズレ)。第1停止がどこでもこぼし目が作れる', () => {
     const rng = createRng(21);
     const navs = [[1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
     // 'bell' の形で第1停止したあと (中段ベル) でも、こぼし目が作れること
@@ -133,11 +133,11 @@ test('押し順ベルの形: 正解の順なら中段ベル揃い、外れた時
                 order.forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
                 const cols = gridAt(ctrl.tops);
                 const correct = order.every((r, k) => r === nav[k]);
-                if (correct) assert.equal(middleWin(cols), 'bell', `正解 ${nav} ${order}`);
+                if (correct) assert.equal(lineWin(cols), 'bell', `正解 ${nav} ${order}`);
                 else {
-                    assert.equal(middleWin(cols), null, `不正解で入賞 ${nav} ${order}`);
-                    assert.equal(cols.filter(col => col[1] === 'bell').length, 2, `こぼし目 ${nav} ${order}`);
-                    assert.ok(!cols[0].includes('cherry'), 'こぼし目に左チェリーがない');
+                    assert.equal(lineWin(cols), null, `不正解で入賞 ${nav} ${order}`);
+                    assert.equal([cols[0][0], cols[1][1], cols[2][2]].filter(x => x === 'bell').length, 2, `右下がりテンパイハズレ ${nav} ${order}`);
+                    assert.deepEqual([cols[0][0], cols[0][1], isBonus(cols[0][2])], ['bell', 'replay', true], 'こぼし目の左はベル／リプレイ／ボーナス図柄');
                 }
             }
         }
@@ -277,7 +277,7 @@ test('game:end の win: チェリー・スイカは役で、チャンス目は�
     }
 });
 
-test('通常時の押し順ベルはナビなしで正解 1/4 (正解なら 15枚・中段ベル揃い、不正解なら 0枚・ベルこぼし目)', () => {
+test('通常時の押し順ベルはナビなしで正解 1/4 (正解なら 15枚・右下がりベル揃い、不正解なら 0枚・ベルこぼし目)', () => {
     const m = createMachine({ seed: 31 });
     const rng = createRng(31);
     let hit = 0;
@@ -292,7 +292,7 @@ test('通常時の押し順ベルはナビなしで正解 1/4 (正解なら 15�
             miss++;
             assert.equal(e.payout, 0);
             assert.equal(e.win, null);
-            assert.equal(e.cols.filter(col => col[1] === 'bell').length, 2, 'こぼし目');
+            assert.equal([e.cols[0][0], e.cols[1][1], e.cols[2][2]].filter(x => x === 'bell').length, 2, 'こぼし目');
         }
     });
     for (let i = 0; i < n; i++) {
@@ -342,7 +342,7 @@ test('AT 中の押し順ベル: ナビどおりなら 15枚、違う押し順な
             } else {
                 assert.equal(end.win, null);
                 assert.equal(end.payout, 0);
-                assert.equal(end.cols.filter(col => col[1] === 'bell').length, 2);
+                assert.equal([end.cols[0][0], end.cols[1][1], end.cols[2][2]].filter(x => x === 'bell').length, 2);
             }
             if (m.snapshot().phase !== 'at') break;
         }
@@ -707,4 +707,110 @@ test('天国のカットインは、天国の前兆の始まりにだけ出る',
         for (let i = 0; i < 300; i++) play(m, rng);
     }
     assert.ok(heavens > 0);
+});
+
+// ----- リール制御の修正 (2026-10-21: 左の窓の決め打ち・中段以外のラインで揃わない・ベルは右下がり) -----
+
+const FORBIDDEN_LEFT = ['cherry', 'bell', 'replay'];
+const LINE_LIST = { top: [0, 0, 0], middle: [1, 1, 1], bottom: [2, 2, 2], down: [0, 1, 2], up: [2, 1, 0] };
+const kindOf = sym => (isBonus(sym) ? 'bonus' : sym);
+// cols で3つ同じ種類が並ぶライン ("名前:種類")
+function same3Lines(cols) {
+    return Object.entries(LINE_LIST).map(([name, line]) => [name, line.map((row, reel) => kindOf(cols[reel][row]))])
+        .filter(([, k]) => k[0] === k[1] && k[1] === k[2] && k[0] !== 'cherry').map(([name, k]) => `${name}:${k[0]}`);
+}
+const matchLeft = (cols, pattern) => pattern.every((p, row) => (p === 'bonus' ? isBonus(cols[0][row]) : cols[0][row] === p));
+
+test('A: 全 shape × 左リールの押し位置 0〜20 で、止まった左の窓が決め打ちどおり (滑りは最大 6コマ)', () => {
+    for (const [shape, pattern] of Object.entries(LEFT_WINDOW)) {
+        for (let press = 0; press < REEL_LENGTH; press++) {
+            const ctrl = createReelControl(shape);
+            const { slip } = ctrl.stop(0, press);
+            assert.ok(slip <= 6, `${shape} 押し位置 ${press} の滑り ${slip}`);
+            ctrl.stop(1, press);
+            ctrl.stop(2, press);
+            const cols = gridAt(ctrl.tops);
+            assert.ok(matchLeft(cols, pattern), `${shape} 押し位置 ${press}: 左 ${cols[0]} (期待 ${pattern})`);
+        }
+    }
+    // 左の窓「チェリー／ベル／リプレイ」はどの形の候補にもない
+    for (const shape of Object.keys(SHAPES)) {
+        assert.ok(!combosFor(shape).some(t => matchLeft(gridAt(t), FORBIDDEN_LEFT)), `${shape} にチェリー／ベル／リプレイの窓`);
+    }
+});
+
+test('B: 10,000 ゲーム回して、中段以外のラインで3つ同じが並ぶのは許可ラインだけ。左の窓「チェリー／ベル／リプレイ」は 0回。ベルは右下がりだけ', () => {
+    const m = createMachine({ seed: 77 });
+    const rng = createRng(77);
+    const allowed = { weakSuika: ['down:suika'], strongSuika: ['top:suika', 'middle:suika'], midCherry: ['down:bonus'], bell: ['down:bell'], replay: ['middle:replay'], commonBell: ['down:bell'] };
+    const roles = ['none', 'none', 'none', 'bell', 'bell', 'replay', 'commonBell', 'weakCherry', 'strongCherry', 'midCherry', 'weakSuika', 'strongSuika', 'chance'];
+    let role = null;
+    let games = 0;
+    let bells = 0;
+    m.on(e => {
+        if (e.type !== EVENTS.GAME_END) return;
+        games++;
+        const cols = e.cols;
+        assert.ok(!matchLeft(cols, FORBIDDEN_LEFT), `左の窓がチェリー／ベル／リプレイ: ${JSON.stringify(cols)}`);
+        if (['big', 'reg', 'koori'].includes(e.win)) return;   // ボーナス図柄・こおりくん揃いはほかのラインを見ない
+        const lines = same3Lines(cols);
+        const ok = allowed[role] || [];
+        assert.ok(lines.every(l => ok.includes(l)), `役 ${role} で揃ったライン ${lines}: ${JSON.stringify(cols)}`);
+        assert.ok(!(cols[0][1] === 'bell' && cols[1][1] === 'bell' && cols[2][1] === 'bell'), '中段ベル3つは作らない');
+        if (e.win === 'bell') {
+            bells++;
+            assert.deepEqual([cols[0][0], cols[1][1], cols[2][2]], ['bell', 'bell', 'bell'], 'ベルは右下がり');
+            assert.equal(e.payout, 15, 'ベルが揃っているのに 0枚');
+        }
+        if (e.payout === 15) assert.ok(e.win === 'bell' || e.win === 'koori', '15枚なのにベルが揃っていない');
+    });
+    for (let i = 0; i < 10000; i++) {
+        // 役を決めて回す (出目の許可ラインの判定用。図柄をそろえるゲーム・ガセ狙えのゲームは役に関係なく許可なし)
+        role = rng.pick(roles);
+        m.debug.setNextRole(role);
+        if (m.snapshot().phase === 'standby') role = 'bonusAlign';
+        play(m, rng);
+    }
+    assert.equal(games, 10000);
+    assert.ok(bells > 500, `ベル ${bells}`);
+});
+
+test('押し順ベル: 4つの押し順すべてで、正解なら右下がりベル揃い + 15枚、不正解なら bellMiss + 0枚。AT 中の押し順ベルは nav が必ず入る', () => {
+    const rng = createRng(45);
+    for (const follow of [true, false]) {
+        const seen = new Set();
+        const m = createMachine({ seed: 46 });
+        let nav = null;
+        let end = null;
+        m.on(e => {
+            if (e.type === EVENTS.AT_GAME) nav = e.nav;
+            if (e.type === EVENTS.GAME_END) end = e;
+        });
+        m.debug.setGames(5);
+        m.debug.direct();
+        play(m, rng);
+        for (let i = 0; i < 300 && seen.size < 4 && m.snapshot().phase === 'at'; i++) {
+            m.debug.setNextRole('bell');
+            assert.ok(m.lever());
+            assert.ok(Array.isArray(nav) && nav.length === 3, 'AT 中の押し順ベルは nav が null でない');
+            if (nav[0] === 0) {
+                [0, 1, 2].forEach(reel => m.stop(reel, rng.int(0, 20)));
+                continue;
+            }
+            seen.add(nav.join(''));
+            const order = follow ? nav : rng.pick(ORDERS.filter(o => o.join('') !== nav.join('')));
+            order.forEach(reel => m.stop(reel, rng.int(0, 20)));
+            const diag = [end.cols[0][0], end.cols[1][1], end.cols[2][2]];
+            if (follow) {
+                assert.deepEqual(diag, ['bell', 'bell', 'bell'], `正解 ${nav}`);
+                assert.equal(end.payout, 15);
+                assert.equal(end.win, 'bell');
+            } else {
+                assert.equal(diag.filter(x => x === 'bell').length, 2, `不正解 ${nav} ${order}`);
+                assert.equal(end.payout, 0);
+                assert.equal(end.win, null);
+            }
+        }
+        assert.equal(seen.size, 4, `4つのナビを見た: ${[...seen]}`);
+    }
 });

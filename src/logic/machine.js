@@ -12,7 +12,7 @@ import { CONFIG } from './config.js';
 import { EVENTS as E } from './events.js';
 import { createRng } from './rng.js';
 import { createReelControl, bellShape, kooriGaseShape } from './reelControl.js';
-import { gridAt, middleWin } from './reels.js';
+import { gridAt, lineWin } from './reels.js';
 
 const RARE = ['weakCherry', 'strongCherry', 'midCherry', 'weakSuika', 'strongSuika', 'chance'];
 // 押し順ベルのナビ (仕様書: 中押し・右押しの4択。順押しナビ [0, 1, 2] は当選確定のときだけ)
@@ -756,13 +756,14 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
     function endGame() {
         const spin = s.spin;
         const cols = gridAt(spin.control.tops);
-        const mid = middleWin(cols);
-        // 中段の入賞か、役で払い出す小役 (チェリー・スイカ。チャンス目はリプレイ扱い)。押し順ベルの取りこぼしは null
+        const line = lineWin(cols);
+        // 入賞ライン (中段: リプレイ・ボーナス・こおりくん / 右下がり: ベル) か、役で払い出す小役 (チェリー・スイカ。チャンス目はリプレイ扱い)。
+        // 押し順ベルの取りこぼしは null
         const chanceShape = spin.shape === 'chanceA' || spin.shape === 'chanceB';
-        const win = mid || (chanceShape ? 'replay' : ROLE_WIN[spin.role] || null);
-        // 押し順ベルは、中段にベルが揃ったとき (正解・順押しナビ) か、「狙え」でこおりくんが揃ったときだけ 15枚
+        const win = line || (chanceShape ? 'replay' : ROLE_WIN[spin.role] || null);
+        // 押し順ベルの払い出しは出目の形で決める: 右下がりにベルが揃ったとき (正解・順押しナビ) か「狙え」でこおりくんが揃ったときだけ 15枚
         let payout = config.payout[spin.role] || 0;
-        if (spin.role === 'bell' && mid !== 'bell' && mid !== 'koori') payout = 0;
+        if (spin.role === 'bell' && line !== 'bell' && line !== 'koori') payout = 0;
         if (spin.role === 'replay' || spin.role === 'chance') s.free = true;
         s.credit += payout;
         s.paidOut += payout;
