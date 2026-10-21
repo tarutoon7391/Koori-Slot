@@ -70,6 +70,21 @@
 | `src/presentation/lcd/director.js` | `bonus:game` と `tokka:game` の受け取りで `v.nav = e.nav` を入れ、筐体のナビ表示（`Cabinet.jsx` の `nav`）に出すようにした | ボーナス中・特化ゾーン中の押し順ベルにナビが出ないと取りこぼす。液晶側（`bonus.js` / `tokka.js`）のナビ描画は足していない |
 | `src/presentation/reels/reelView.js` | リールの入賞ラインの描画に右下がり（黄）の線を足した | ベルの入賞ラインを右下がりに変えたため |
 
+### 演出側の追加（`handoff/`）の取り込みと `at:end` の `trophy`（2026-10-21）
+
+友達（演出担当）の `handoff/` を次の順で取り込んだ（1フォルダ 1コミット。`new/` をコピー → `presentation.patch` → `docs.patch`。`logic.patch` は当てず、本物の内部処理に自分で入れた）。
+
+| 順 | フォルダ | 当て方 | 手で入れたハンク |
+|---|---|---|---|
+| 1 | `2026-10-21_zukan-trophy` | `git apply --3way`（演出は全部きれいに適用） | `docs/events.md` の版と 5章（内部処理側の v0.3 の記述と両方残した） |
+| 2 | `2026-10-21_special-cutin` | `patch -p1 --fuzz=3` | `collection/profiles.js` の kotani の説明文、`screen-design.md` の版 |
+| 3 | `2026-10-21_cutin-cast` | `patch -p1 --fuzz=3`（全ハンク適用） | なし |
+| 4 | `2026-10-21_nav-guide` | `patch -p1 --fuzz=3` | `screen-design.md` の版（v1.1 のまま。パッチの v0.9 は古い） |
+
+- **`at:end` に `trophy` を足した**（設定示唆トロフィーの色 `'white'` `'blue'` `'green'` `'purple'` `'red'` `'rainbow'`、出ないときは `null`）。`config.show.trophy`【仮: 前作の値。出る率 50%、設定ごとの重み】。`endAt()` で rate で出る・出ないを抽選し、出るときは設定ごとの重みで色を選ぶ。設定より上の色は重みが 0 なので出ない。テストで設定 1〜6 × 10,000 回を確認。`events.js` と `docs/events.md` v0.3 の `at:end` を合わせた。
+- 自分が演出側に入れていた最小限の変更（`director.js` の `bonus:game` / `tokka:game` → `v.nav`、`reelView.js` の右下がりの線）は、友達の変更の上に残した。友達の nav-guide は `director.snapshot().nav`（= `v.nav`）を見るので、**ボーナス中・特化ゾーン中も筐体のナビの数字（次に押すリールだけ赤）・ナビ無視の警告・Space のナビ順は動く**。
+- **未対応・演出側待ち**：ボーナス中・特化ゾーン中の液晶側のナビ表示（`lcd/bonus.js` / `lcd/tokka.js`。AT 中の液晶のナビは `lcd/at.js` にあるが、ボーナス・特化ゾーンの画面には無い）。演出側（友達）に依頼済み。
+
 ### 残っている【仮】の値（ユーザー確認待ち）
 
 - 役の出現率（`roles.normal / bonus / at`）と共通ベルの有無（`commonBell`）
@@ -79,3 +94,4 @@
 - 天国カットインのアルアル率（`show.aruaruShare` 30%）、前兆のチーム・バトル回数・カットイン・PUSH ボタンの色の振り分け、レア役のフラッシュ・先バレ音の率（`show.*`）
 - AT 中のボーナスの相手の振り分け（`show.boss`）、設定示唆の画像の振り分け（`show.hint`）
 - ガセ「狙え」の出やすさ（`show.neraeGase` 1/63）
+- 設定示唆トロフィーの出る率と色の重み（`show.trophy`。前作の値）
