@@ -1,0 +1,303 @@
+/* 筐体: 氷と黒い摩天楼 (画面設計書 1章) */
+:root {
+    --bg: #070a0f;
+    --tower: #0d1117;
+    --tower2: #161d27;
+    --ice: #7fd3f7;
+    --ice-light: #dff6ff;
+    --ice-deep: #1b3a6b;
+    --text: #e3ecf3;
+    --muted: #93a6b8;
+    --led: #ff4a3a;
+    --display: "Dela Gothic One", "Yu Gothic", sans-serif;
+    --body: "Zen Kaku Gothic New", "Yu Gothic", "Meiryo", sans-serif;
+    color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: radial-gradient(ellipse at top, #13233a 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: var(--body);
+    min-height: 100vh;
+}
+
+.app {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 16px max(12px, env(safe-area-inset-right, 0px)) 32px max(12px, env(safe-area-inset-left, 0px));
+}
+
+/* ----- 筐体 ----- */
+.cabinet {
+    width: min(100%, 560px);
+    background: linear-gradient(180deg, var(--tower2), var(--tower) 40%, #1a222c);
+    border-radius: 18px 18px 14px 14px;
+    padding: 0 14px 16px;
+    position: relative;
+    box-shadow: 0 0 0 2px #24303e, 0 0 0 5px rgba(127, 211, 247, .25), 0 20px 60px rgba(0, 0, 0, .6);
+}
+
+/* 氷のふち */
+.cabinet::before,
+.cabinet::after {
+    content: "";
+    position: absolute;
+    width: 14px;
+    top: 120px;
+    bottom: 160px;
+    background: linear-gradient(180deg, transparent, rgba(191, 240, 255, .55), transparent);
+    clip-path: polygon(0 0, 100% 12%, 0 25%, 100% 40%, 0 55%, 100% 70%, 0 85%, 100% 100%, 0 100%);
+}
+.cabinet::before { left: -6px; }
+.cabinet::after { right: -6px; transform: scaleX(-1); }
+
+.cab-top {
+    margin: 0 -14px 12px;
+    padding: 30px 12px 12px;
+    background: var(--tower);
+    clip-path: polygon(0 34%, 8% 22%, 30% 16%, 42% 6%, 50% 0, 58% 6%, 70% 16%, 92% 22%, 100% 34%, 100% 100%, 0 100%);
+    border-bottom: 3px solid var(--ice);
+    text-align: center;
+}
+
+.cab-top h1 {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+.cab-top .t1 {
+    display: block;
+    font-size: clamp(22px, 6vw, 32px);
+    background: linear-gradient(180deg, #ffffff, var(--ice));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 2px 0 var(--ice-deep));
+}
+
+.cab-top .t2 {
+    display: block;
+    font-size: clamp(11px, 3vw, 14px);
+    color: #ffffff;
+    margin-top: 4px;
+}
+
+.lcd-frame {
+    background: #000;
+    padding: 6px;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 2px #2a3644;
+}
+
+.lcd {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    image-rendering: pixelated;
+    border-radius: 3px;
+}
+
+/* ----- リール ----- */
+.reel-box {
+    margin-top: 12px;
+    background: #05080b;
+    border-radius: 8px;
+    padding: 6px 10px 10px;
+    box-shadow: inset 0 0 0 2px #2a3644;
+}
+
+.nav {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    justify-items: center;
+    height: 30px;
+    margin-bottom: 6px;
+}
+
+.nav-num {
+    width: 38px;
+    height: 28px;
+    border-radius: 5px;
+    display: grid;
+    place-items: center;
+    font-family: var(--display);
+    font-size: 18px;
+    color: #fff;
+    background: #2a3a5a;
+    border: 2px solid #fff;
+}
+.nav-num.first { background: #ff3a3a; }
+.nav-num.off { background: #111820; border-color: #1e2833; }
+
+.reels {
+    display: block;
+    width: 100%;
+    cursor: pointer;
+}
+
+.leds {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding: 6px 14px;
+    background: #1a0a0a;
+    border-radius: 6px;
+    font-family: var(--display);
+    color: var(--led);
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+}
+.leds b { font-weight: 400; margin-left: 6px; }
+
+/* ----- ボタン ----- */
+.controls {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.controls button {
+    font-family: var(--display);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    /* ダブルタップでの拡大をしない (続けて押したときに取りこぼさない) */
+    touch-action: manipulation;
+    user-select: none;
+}
+.reels { touch-action: manipulation; }
+
+.lever {
+    width: 64px;
+    height: 72px;
+    border: 0;
+    background: none;
+    position: relative;
+    color: var(--muted);
+}
+.lever .knob {
+    position: absolute;
+    left: 50%;
+    top: 4px;
+    width: 30px;
+    height: 30px;
+    margin-left: -15px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff8a8a, #d0202a 60%, #7a0a10);
+    box-shadow: 0 3px 0 #3a0508;
+}
+.lever::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 30px;
+    width: 6px;
+    height: 26px;
+    margin-left: -3px;
+    background: linear-gradient(90deg, #6a727e, #c8d0da, #6a727e);
+}
+.lever:active .knob { transform: translateY(8px); }
+.lever .label { position: absolute; bottom: 0; left: 0; right: 0; font-size: 10px; }
+
+/* PUSH ボタン (丸。激熱で色がつく・飛び出す) */
+.push {
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    border: 0;
+    font-size: 19px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+    background: radial-gradient(circle at 35% 30%, #ffffff, #c8d4e0 55%, #7a8696);
+    box-shadow: 0 6px 0 #2a3240, 0 8px 18px rgba(0, 0, 0, .5);
+    transition: transform .15s, box-shadow .15s;
+}
+.push:active { transform: translateY(4px); box-shadow: 0 2px 0 #2a3240; }
+.push.lit-white { background: radial-gradient(circle at 35% 30%, #ffffff, #e8eef4 55%, #9aa6b4); box-shadow: 0 6px 0 #2a3240, 0 0 24px #ffffff; }
+.push.lit-blue { background: radial-gradient(circle at 35% 30%, #9ac8ff, #2a7ae0 55%, #0a3a8a); box-shadow: 0 6px 0 #0a1a40, 0 0 28px #2a7ae0; }
+.push.lit-red { background: radial-gradient(circle at 35% 30%, #ff9a9a, #e02a3a 55%, #7a0a10); box-shadow: 0 6px 0 #3a0508, 0 0 30px #ff2a3a; }
+.push.lit-gold { background: radial-gradient(circle at 35% 30%, #fff6c0, #f0c030 55%, #8a6000); box-shadow: 0 6px 0 #3a2a00, 0 0 34px #ffd23a; }
+.push.lit-rainbow {
+    background: conic-gradient(#ff3040, #ff9a20, #ffe040, #40d060, #30a0ff, #8050ff, #ff3040);
+    box-shadow: 0 6px 0 #2a1a3a, 0 0 36px #ffffff;
+    animation: spin-hue 1.2s linear infinite;
+}
+.push.pop { transform: translateY(-14px) scale(1.12); box-shadow: 0 20px 0 #2a3240, 0 0 40px #fff; }
+.push.waiting { animation: pulse .6s ease-in-out infinite alternate; }
+.push.lit-rainbow.waiting { animation: spin-hue 1.2s linear infinite, pulse .6s ease-in-out infinite alternate; }
+
+@keyframes spin-hue { to { filter: hue-rotate(360deg); } }
+@keyframes pulse { to { filter: brightness(1.35); } }
+
+.stops {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+.stop {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 0;
+    background: radial-gradient(circle at 35% 30%, #5a6a7a, #2a3440);
+    box-shadow: 0 4px 0 #0a0e14;
+}
+.stop.active {
+    background: radial-gradient(circle at 35% 30%, #e0f8ff, var(--ice) 60%, #2a7ab0);
+    box-shadow: 0 4px 0 #0a2a4a, 0 0 14px var(--ice);
+}
+.stop:active { transform: translateY(3px); box-shadow: 0 1px 0 #0a0e14; }
+
+@media (prefers-reduced-motion: reduce) {
+    .push.lit-rainbow, .push.waiting { animation: none; }
+}
+
+/* ----- 横 (デバッグ) ----- */
+.side {
+    width: min(100%, 380px);
+    display: grid;
+    gap: 10px;
+}
+.side-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.side button, .debug select {
+    font: 700 13px var(--body);
+    color: var(--text);
+    background: #1a2430;
+    border: 1px solid #2e3c4c;
+    border-radius: 6px;
+    padding: 7px 10px;
+    cursor: pointer;
+}
+.side button:hover { background: #243244; }
+.side button:focus-visible, .push:focus-visible, .stop:focus-visible, .lever:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+.keys { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+.debug {
+    background: #0d131b;
+    border: 1px solid #1e2a38;
+    border-radius: 10px;
+    padding: 12px 14px 14px;
+}
+.debug h2 { margin: 0 0 8px; font: 400 16px var(--display); color: var(--ice); }
+.debug h3 { margin: 14px 0 6px; font-size: 12px; color: var(--muted); letter-spacing: .08em; }
+.debug-info {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    margin: 0;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+.debug-info dt { color: var(--muted); }
+.debug-info dd { margin: 0; }
+.debug-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.debug-buttons button { padding: 5px 9px; font-size: 12px; }

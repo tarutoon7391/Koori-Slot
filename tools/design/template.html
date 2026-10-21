@@ -1,0 +1,329 @@
+<title>ASO摩天楼 設計書</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;700&family=M+PLUS+1+Code:wght@400;600&display=swap">
+<style>
+/* Layout: 黒い摩天楼の帯（タイトル＋タブ）の下に、目次サイドバーと本文の2カラム。狭い画面では1カラム */
+:root {
+  --bg: #f3f7fa;          /* 霜のような白 */
+  --surface: #ffffff;
+  --fg: #16202b;
+  --muted: #5a6b7b;
+  --line: #d3dee8;
+  --ice: #1f8fc8;         /* 氷の青 */
+  --ice-soft: #e2f2fb;
+  --tower: #0d1117;       /* 黒い摩天楼 */
+  --tower-fg: #e8f6ff;
+  --decided: #1d7a4a; --decided-bg: #e1f4ea;
+  --spec: #0e6a96;    --spec-bg: #dcf0fa;
+  --idea: #a0620a;    --idea-bg: #fcefd8;
+  --inner: #5b4bb7;   --inner-bg: #ebe8fb;
+  --font-display: "Dela Gothic One", "Hiragino Kaku Gothic StdN", "Yu Gothic", sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --font-mono: "M PLUS 1 Code", "BIZ UDGothic", "MS Gothic", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b1016; --surface: #121a23; --fg: #e3ecf3; --muted: #93a6b8; --line: #263443;
+  --ice: #6cc8f2; --ice-soft: #13283a; --tower: #05080b; --tower-fg: #e8f6ff;
+  --decided: #6fd39d; --decided-bg: #10301f; --spec: #7fd0f5; --spec-bg: #0f2a3a; --idea: #f0b860; --idea-bg: #33240c;
+  --inner: #b1a6f5; --inner-bg: #231d45; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0b1016; --surface: #121a23; --fg: #e3ecf3; --muted: #93a6b8; --line: #263443;
+  --ice: #6cc8f2; --ice-soft: #13283a; --tower: #05080b; --tower-fg: #e8f6ff;
+  --decided: #6fd39d; --decided-bg: #10301f; --spec: #7fd0f5; --spec-bg: #0f2a3a; --idea: #f0b860; --idea-bg: #33240c;
+  --inner: #b1a6f5; --inner-bg: #231d45; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.8; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--tower); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.hero { background: var(--tower); color: var(--tower-fg); position: relative; overflow: hidden; }
+header.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; }
+header.hero .wrap { position: relative; padding-block: 28px 0; display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; letter-spacing: .14em; color: #8fd6f7; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(22px, 4.4vw, 36px); line-height: 1.3; margin: 0; text-wrap: balance; }
+h1 small { display: block; font-size: .55em; color: #a9def5; margin-top: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: #c5d9e6; margin-top: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+nav.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--tower); border-bottom: 1px solid #1f2a36; }
+nav.tabs .wrap { display: flex; gap: 4px; padding-block: 10px 0; overflow-x: auto; }
+nav.tabs button { font: 700 14px var(--font-body); color: #9fb3c4; background: transparent; border: 0; padding: 10px 16px 12px; border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap; }
+nav.tabs button[aria-selected="true"] { color: #ffffff; border-bottom-color: #6cc8f2; }
+nav.tabs button:focus-visible { outline: 2px solid #6cc8f2; outline-offset: -2px; }
+
+main .wrap { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 36px; padding-block: 28px 64px; }
+aside.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 64px); align-self: start; max-height: calc(100vh - 90px); overflow: auto; font-size: 13px; }
+aside.toc p { margin: 0 0 6px; color: var(--muted); font-size: 12px; letter-spacing: .1em; }
+aside.toc a { display: block; padding: 4px 10px; color: var(--muted); text-decoration: none; border-left: 2px solid var(--line); }
+aside.toc a:hover, aside.toc a.on { color: var(--ice); border-left-color: var(--ice); }
+@media (max-width: 860px) { main .wrap { grid-template-columns: minmax(0, 1fr); } aside.toc { display: none; } }
+
+article { min-width: 0; max-width: 780px; }
+article h1 { display: none; }
+article h2 { font-family: var(--font-display); font-weight: 400; font-size: 22px; line-height: 1.4; margin: 48px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--fg); text-wrap: balance; scroll-margin-top: 80px; }
+article h2:first-of-type { margin-top: 12px; }
+article h3 { font-size: 17px; margin: 30px 0 10px; color: var(--fg); text-wrap: balance; scroll-margin-top: 80px; }
+article h3::before { content: ""; display: inline-block; width: 10px; height: 10px; background: var(--ice); transform: rotate(45deg); margin-right: 10px; vertical-align: 2px; }
+article p, article li { max-width: 68ch; }
+article a { color: var(--ice); }
+article hr { border: 0; height: 0; margin: 8px 0; }
+article strong { color: var(--fg); background: linear-gradient(transparent 62%, var(--ice-soft) 62%); }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 4px 0; }
+article blockquote { margin: 0; padding: 4px 16px; border-left: 3px solid var(--line); color: var(--muted); }
+.doc-meta { color: var(--muted); font-size: 13px; }
+
+.tbl { overflow-x: auto; margin: 14px 0 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.6; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--ice-soft); font-weight: 700; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 700; white-space: nowrap; }
+
+pre { overflow-x: auto; background: var(--tower); color: #cfeeff; padding: 16px; border-radius: 6px; font: 13px/1.5 var(--font-mono); }
+code { font-family: var(--font-mono); font-size: .92em; background: var(--ice-soft); padding: 1px 5px; border-radius: 3px; }
+pre code { background: none; padding: 0; }
+
+.chip { display: inline-block; font-size: 11.5px; font-weight: 700; line-height: 1; padding: 4px 7px; border-radius: 3px; margin-right: 6px; vertical-align: 1px; letter-spacing: .04em; }
+.chip.d { color: var(--decided); background: var(--decided-bg); }
+.chip.s { color: var(--spec); background: var(--spec-bg); }
+.chip.i { color: var(--idea); background: var(--idea-bg); }
+.chip.n { color: var(--inner); background: var(--inner-bg); }
+header .chip.d { color: #0e3a24; background: #8fe0b4; }
+header .chip.s { color: #062a3a; background: #8fd6f7; }
+header .chip.i { color: #3c2604; background: #f4c77a; }
+header .chip.n { color: #1d1648; background: #c4bbf8; }
+
+figure.mock { margin: 16px 0 20px; display: grid; gap: 6px; justify-items: start; }
+figure.mock canvas { display: block; width: 100%; height: auto; border-radius: 4px; image-rendering: pixelated; background: #000; box-shadow: 0 1px 0 var(--line); }
+figure.mock figcaption { font-size: 13px; color: var(--muted); }
+figure.mock figcaption b { color: var(--fg); margin-right: 6px; }
+.mock-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 16px 0; }
+.mock-row figure.mock { margin: 0; }
+.chars { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin: 14px 0 20px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 8px 10px; display: grid; gap: 4px; justify-items: center; text-align: center; }
+.card canvas { width: 112px; height: 112px; image-rendering: pixelated; background: var(--ice-soft); border-radius: 4px; }
+.card .nm { font-weight: 700; font-size: 13px; line-height: 1.35; }
+.card .gp { font-size: 11px; color: var(--muted); }
+.card .new { font-size: 10.5px; font-weight: 700; color: var(--idea); }
+.ask { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--idea); border-radius: 6px; padding: 6px 20px 10px; margin-top: 18px; }
+.ask h2 { border: 0; margin-top: 12px; font-size: 19px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<header class="hero">
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div class="eyebrow">KOORI-SLOT ／ 演出設計 v0.4 ／ 2026-10-20</div>
+    <h1>こおりくんの大冒険<small>～最凶のASO摩天楼への挑戦～</small></h1>
+    <div class="legend">
+      <span><span class="chip d">決定</span>ユーザーが指定したもの</span>
+      <span><span class="chip s">仕様書</span>内部処理の仕様書で決まっていること</span>
+      <span><span class="chip i">案</span>Claude の仮の案（直してください）</span>
+      <span><span class="chip n">内部</span>内部処理が抽選してイベントで伝えるもの</span>
+    </div>
+  </div>
+  <nav class="tabs" aria-label="書類">
+    <div class="wrap" role="tablist">
+      <button role="tab" id="tab-screen" aria-selected="true" data-doc="screen">画面設計書</button>
+      <button role="tab" id="tab-chars" aria-selected="false" data-doc="chars">キャラ設計書</button>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap">
+    <aside class="toc" aria-label="目次"><p>目次</p><div id="toc"></div></aside>
+    <article id="doc" role="tabpanel"></article>
+  </div>
+</main>
+
+<script type="text/markdown" id="md-screen">
+@@SCREEN@@
+</script>
+<script type="text/markdown" id="md-chars">
+@@CHARS@@
+</script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script>
+// ドット絵と画面イメージ (src/presentation/art と tools/design/mockups.js をまとめたもの)
+const Art = (() => {
+@@ART@@
+return { SCENES, CHARACTERS, drawCharacterCard };
+})();
+</script>
+<script>
+(function () {
+  // 画面イメージの文字に使う字を先に読み込む (Google Fonts は使う字だけを読み込むため、canvas に描く前に要る)
+  const GLYPHS = '@@GLYPHS@@';
+  const fontsReady = (() => {
+    const probe = document.createElement('div');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;width:10px;overflow:hidden;white-space:nowrap';
+    ['Dela Gothic One', 'Zen Kaku Gothic New'].forEach(f => {
+      const s = document.createElement('span');
+      s.style.fontFamily = `"${f}"`;
+      s.textContent = GLYPHS;
+      probe.appendChild(s);
+    });
+    document.body.appendChild(probe);
+    const timeout = new Promise(res => setTimeout(res, 4000));
+    return Promise.race([document.fonts.ready, timeout]).then(() => document.fonts.ready).catch(() => {});
+  })();
+
+  function sizedCanvas(w, h, cssW) {
+    const c = document.createElement('canvas');
+    const k = 2 * (window.devicePixelRatio || 1);
+    c.width = w * k; c.height = h * k;
+    c.style.maxWidth = cssW + 'px';
+    c.style.aspectRatio = w + ' / ' + h;
+    const ctx = c.getContext('2d');
+    ctx.scale(k, k);
+    return { c, ctx };
+  }
+
+  // ```mock <id> <説明>``` → 画面イメージ、```chars <id> <id> ...``` → キャラのカード
+  function figures(root) {
+    const jobs = [];
+    root.querySelectorAll('pre > code.language-mock').forEach(code => {
+      const lines = code.textContent.trim().split('\n');
+      const row = document.createElement('div');
+      row.className = lines.length > 1 ? 'mock-row' : '';
+      lines.forEach(line => {
+        const m = line.trim().match(/^(\S+)\s*(.*)$/);
+        const scene = m && Art.SCENES[m[1]];
+        if (!scene) return;
+        const fig = document.createElement('figure'); fig.className = 'mock';
+        const { c, ctx } = sizedCanvas(scene.w, scene.h, scene.w * 2);
+        fig.appendChild(c);
+        if (m[2]) { const cap = document.createElement('figcaption'); cap.textContent = m[2]; fig.appendChild(cap); }
+        row.appendChild(fig);
+        jobs.push(() => { ctx.save(); scene.draw(ctx); ctx.restore(); });
+      });
+      const pre = code.parentNode;
+      if (row.className) pre.replaceWith(row); else pre.replaceWith(...row.childNodes);
+    });
+    root.querySelectorAll('pre > code.language-chars').forEach(code => {
+      const grid = document.createElement('div'); grid.className = 'chars';
+      code.textContent.trim().split(/\s+/).forEach(id => {
+        const info = Art.CHARACTERS.find(x => x.id === id);
+        if (!info) return;
+        const card = document.createElement('div'); card.className = 'card';
+        const { c, ctx } = sizedCanvas(56, 56, 112);
+        card.appendChild(c);
+        card.insertAdjacentHTML('beforeend',
+          `<div class="nm">${info.name}</div><div class="gp">${info.group}</div>` +
+          (info.origin === '新' ? '<div class="new">新キャラ（Claude の案）</div>' : ''));
+        grid.appendChild(card);
+        jobs.push(() => Art.drawCharacterCard(ctx, id, 56, 56));
+      });
+      code.parentNode.replaceWith(grid);
+    });
+    fontsReady.then(() => jobs.forEach(j => j()));
+  }
+
+  const docs = {
+    screen: document.getElementById('md-screen').textContent,
+    chars: document.getElementById('md-chars').textContent
+  };
+  const files = { 'screen-design.md': 'screen', 'characters.md': 'chars' };
+  const art = document.getElementById('doc');
+  const toc = document.getElementById('toc');
+
+  // 「決定」「案」「内部」で始まる文やかっこ書きを色つきの印にする
+  function chips(html) {
+    const kind = { '決定': 'd', '仕様書': 's', '案': 'i', '内部': 'n' };
+    html = html.replace(/(>|^)\s*(決定|仕様書|案|内部)：/g, (m, a, k) => `${a}<span class="chip ${kind[k]}">${k}</span>`);
+    html = html.replace(/（決定・仕様書）/g, ' <span class="chip d">決定</span><span class="chip s">仕様書</span>');
+    html = html.replace(/（(決定|仕様書|案|内部)(：([^）<]*))?）/g, (m, k, _, rest) =>
+      ` <span class="chip ${kind[k]}">${k}${rest ? '：' + rest : ''}</span>`);
+    return html;
+  }
+
+  function slug(text, i) { return 'sec-' + i; }
+
+  function render(key, hash) {
+    let html = chips(marked.parse(docs[key]));
+    art.innerHTML = html;
+    figures(art);
+    art.querySelectorAll('table').forEach(t => {
+      const box = document.createElement('div'); box.className = 'tbl';
+      t.parentNode.insertBefore(box, t); box.appendChild(t);
+    });
+    // 「決めてほしいこと」の章を枠で囲む
+    const heads = [...art.querySelectorAll('h2')];
+    heads.forEach(h => {
+      if (!h.textContent.includes('決めてほしいこと')) return;
+      const box = document.createElement('section'); box.className = 'ask';
+      h.parentNode.insertBefore(box, h);
+      let n = h; const move = [];
+      while (n && !(n !== h && n.tagName === 'H2')) { move.push(n); n = n.nextElementSibling; }
+      move.forEach(x => box.appendChild(x));
+    });
+    // 版の行は小さく
+    art.querySelectorAll('p').forEach(p => { if (/^版:/.test(p.textContent)) p.className = 'doc-meta'; });
+    // 書類どうしのリンクはタブの切り替えにする
+    art.querySelectorAll('a[href]').forEach(a => {
+      const [file, frag] = a.getAttribute('href').split('#');
+      if (files[file]) {
+        a.addEventListener('click', e => { e.preventDefault(); select(files[file], frag ? 'h-' + frag : null); });
+      }
+    });
+    toc.innerHTML = '';
+    art.querySelectorAll('h2').forEach((h, i) => {
+      const raw = h.textContent.replace(/\s+/g, ' ').trim();
+      h.id = 'h-' + raw.toLowerCase().replace(/[.\s]+/g, '-').replace(/[（）()「」、。：:]/g, '');
+      const a = document.createElement('a'); a.href = '#'; a.textContent = raw;
+      a.addEventListener('click', e => { e.preventDefault(); h.scrollIntoView(); });
+      toc.appendChild(a);
+    });
+    const target = hash && (document.getElementById(hash) ||
+      [...art.querySelectorAll('h2')].find(h => hash.includes(h.textContent.trim().split(/\s/)[0].replace('.', ''))));
+    if (target) target.scrollIntoView(); else window.scrollTo(0, 0);
+  }
+
+  function select(key, hash) {
+    document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.doc === key)));
+    art.setAttribute('aria-labelledby', 'tab-' + key);
+    render(key, hash);
+    try { localStorage.setItem('aso-doc-tab', key); } catch (e) {}
+  }
+
+  document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => select(b.dataset.doc)));
+  let start = location.hash === '#chars' ? 'chars' : 'screen';
+  if (!location.hash) { try { start = localStorage.getItem('aso-doc-tab') === 'chars' ? 'chars' : 'screen'; } catch (e) {} }
+  select(start);
+
+  // 目次の今いる章
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const i = [...art.querySelectorAll('h2')].indexOf(e.target);
+    toc.querySelectorAll('a').forEach((a, j) => a.classList.toggle('on', i === j));
+  }), { rootMargin: '0px 0px -70% 0px' });
+  const observe = () => { io.disconnect(); art.querySelectorAll('h2').forEach(h => io.observe(h)); };
+  observe();
+  document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', observe));
+
+  // ヘッダーの黒い摩天楼と氷の粒
+  const cv = document.getElementById('sky'), ctx = cv.getContext('2d');
+  function sky() {
+    const w = cv.clientWidth, h = cv.clientHeight, r = window.devicePixelRatio || 1;
+    cv.width = w * r; cv.height = h * r; ctx.scale(r, r);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let x = 0; x < w; ) {
+      const bw = 18 + rnd() * 40, bh = h * (0.25 + rnd() * 0.6);
+      ctx.fillStyle = '#1a2430'; ctx.fillRect(x, h - bh, bw, bh);
+      ctx.fillStyle = 'rgba(140,215,250,.35)';
+      for (let y = h - bh + 6; y < h - 6; y += 9) for (let wx = x + 4; wx < x + bw - 4; wx += 7) if (rnd() < .22) ctx.fillRect(wx, y, 2, 3);
+      x += bw + 2;
+    }
+    const tx = w * 0.82, th = h * 0.95;
+    ctx.fillStyle = '#26323f'; ctx.beginPath(); ctx.moveTo(tx - 34, h); ctx.lineTo(tx - 22, h - th); ctx.lineTo(tx, h - th - 14); ctx.lineTo(tx + 22, h - th); ctx.lineTo(tx + 34, h); ctx.fill();
+    ctx.fillStyle = '#d8f3ff';
+    for (let i = 0; i < 60; i++) ctx.fillRect(rnd() * w, rnd() * h * .7, 1.5, 1.5);
+  }
+  sky(); window.addEventListener('resize', () => { ctx.setTransform(1,0,0,1,0,0); sky(); });
+})();
+</script>

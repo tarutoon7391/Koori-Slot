@@ -1,0 +1,200 @@
+# 内部処理と演出の約束（台の窓口とイベント）
+
+版: v0.2（2026-10-21。内部処理の担当の回答を反映）
+
+演出（`src/presentation/`）と内部処理（`src/logic/`）は、ここに書いた約束だけでつながっています。
+今の `src/logic/` は、演出を確認するための **仮組** です。本物の内部処理を作ったら、`src/logic/` を差しかえてください。この約束がそろっていれば、演出側を直さずに動きます。
+
+- 演出側が読み込むのは `src/logic/index.js` だけです。
+- 名前とデータを変えるときは、**このファイルを先に直して**、演出側に知らせてください。
+
+---
+
+## 1. 台の窓口（`createMachine` が返すもの）
+
+```js
+import { createMachine, EVENTS, STRIPS, REEL_LENGTH, windowAt } from '../logic/index.js';
+
+const machine = createMachine({ setting: 1 });   // setting: 設定 1〜6
+machine.on(event => { /* event.type でイベントの種類を見る */ });
+```
+
+| 名前 | 中身 |
+|---|---|
+| `on(listener)` | イベントを受け取る。`listener({ type, ...データ })`。戻り値を呼ぶと受け取るのをやめる |
+| `lever()` | レバー ON（ベットも自動）。回せないときは `false` |
+| `stop(reel, press)` | 停止ボタン。`reel` は 0〜2（左・中・右）、`press` は押したときに上段にかかっていた図柄の番号。止まる位置（上段の番号）を返す |
+| `snapshot()` | 表示用の状態：`{ credit, invested, paidOut, game, phase, normalGames, spinning, free, bonus, at }` |
+| `debug` | 演出の確認用（3章） |
+
+- 内部処理は、止まる位置（すべり）まで決めます。演出側は返ってきた位置までリールを回して止めるだけです。
+- `STRIPS` はリール配列 v1.0（各 21コマ、上から順の番号）です。止まる位置 `top` の上段は `STRIPS[reel][top]`、中段は `top+1`、下段は `top+2` です。
+- リールは下へ回るので、押してから k コマ滑ると上段は `top - k` になります。
+
+---
+
+## 2. イベント
+
+1ゲームの順番は、次のとおりです。
+
+1. `lever`
+2. `notice`（レバーのとき）
+3. `reel:stop` × 3
+4. `game:end`
+5. `notice`（止まったあと）
+6. `stage` / `zencho:end` / `bonus:…` など
+
+演出側は、第3停止のリールが止まりきるまで、`game:end` から後を見せません（進行役が待つ）。
+
+### 1ゲーム
+
+| type | データ | いつ |
+|---|---|---|
+| `lever` | `{ game, phase, free }` | レバー ON。`phase`: `'normal'` `'standby'`（ボーナス図柄をそろえるゲーム）`'bonus'` `'at'`（AT 中の前兆・特化ゾーンも `'at'`） |
+| `notice` | `{ kind, timing, … }` | 演出の抽選結果（下の表） |
+| `reel:stop` | `{ reel, top, slip, order }` | リールが止まる位置が決まった。`order` は何番目に止めたか |
+| `game:end` | `{ cols, win, payout, credit }` | 3つ止まった。`cols[リール][段]` は出目。`win` は入賞した役（下の表）か `null` |
+
+`game:end` の `win`（v0.2）：
+
+| win | 中身 |
+|---|---|
+| `'bell'` `'replay'` | 中段に揃った小役。チャンス目は `'replay'`（再遊技） |
+| `'cherry'` `'suika'` | チェリー・スイカ（ラインに関係なく役で払い出す）。払い出し枚数は `payout` |
+| `'big'` `'reg'` | 中段に 7・7・7 / 7・7・BAR |
+| `'koori'` | 中段にこおりくん・こおりくん・こおりくん。通常時の入賞（エピソードBIG）も、「こおりを狙え」の揃いも `'koori'`（v0.1 の `'epbig'` はやめて `'koori'` に統一） |
+
+`notice` の種類（期待度に関わるので、内部処理が抽選します）：
+
+| kind | データ | 見せ方（演出側） |
+|---|---|---|
+| `sakibare` | `{ timing: 'lever', pitch }` | 先バレ音。`pitch: 'high'` は AT 直撃（高くした音） |
+| `flash` | `{ timing: 'afterStop', level }` | レア役のフラッシュ。`level`: `'small'` `'big'` `'rainbow'` |
+| `cutin` | `{ timing: 'lever', color }` | 前兆中のカットイン。`color`: `'blue'` `'green'` `'red'` `'gold'` `'rainbow'` |
+| `kakutei` | `{ timing: 'afterStop' }` | 確定音 |
+
+### 通常時（AT 中の前兆も同じイベント）
+
+| type | データ | いつ |
+|---|---|---|
+| `stage` | `{ place, floor, state }` | ゲームの終わりに階が変わった。`place`: `'floor'`（階）か `'middle'`（前兆の中間階層）。`state`: `'low'` `'high'` `'super'`（階で状態が確定する）。AT 中は出さない |
+| `zone` | `{ active, start }` | 魔天ゾーンに入った・出た（黒い靄）。そのモードのゾーンのときだけ。前兆といつもセット |
+| `zencho:start` | `{ team, games, cause }` | 前兆が始まった（本物・ガセは教えない）。`team`: `'fiveDX'` `'ask3'` `'muscle'`、`cause`: `'zone'` `'rare'` `'tenjo'` `'stock'`（v0.2: 特化ゾーンが終わったあとのボーナスの放出）。AT 中にも出る（`lever` の `phase` は `'at'`） |
+| `zencho:battle` | `{ round, of, final, win, button }` | 前兆の最後の連続演出（1ゲームに1回）。`final` のときだけ `win`（倒せるか）と `button`（PUSH ボタンの色：`'white'` `'blue'` `'red'` `'gold'` `'rainbow'`）が入る |
+| `zencho:end` | `{ win, bonus }` | 前兆の終わり |
+| `heaven` | `{ who }` | 天国のカットイン（`'naitei'` `'aruaru'`）。天国にいるときの前兆の始まりに出る（出たら天国確定。天国でも出ないことがある） |
+| `tenjo` | `{ who, bonus }` | 天井到達。BIG 以上確定：`who` が `'naitei'` なら `bonus: 'big'`、`'aruaru'` なら `bonus: 'epbig'`（v0.2 2026-10-21） |
+| `at:direct` | `{}` | AT 直撃（このゲームの演出のあと `at:start` が来る）。**直撃のゲームの出目はチャンス目A（ベルの小V）**で止める（2026-10-21 演出側の指定。リプレイ扱い） |
+
+- 前兆はレア役からも始まります。強レア役（強チェリー・強スイカ・チャンス目）でボーナスに当たらなかったときは 50% でガセ前兆、弱レア役からの前兆は本前兆だけです（仕様書 2026-10-21。AT 中も同じ）。
+- AT 中に規定ゲーム数（ゾーン・天井）に着いたときも、AT 中に前兆が始まってボーナスになります。
+
+### 疑似ボーナス
+
+| type | データ | いつ |
+|---|---|---|
+| `bonus:standby` | `{ bonus, stock }` | ボーナス確定。次のゲームで図柄がそろう。`bonus`: `'big'`（7・7・7）`'reg'`（7・7・BAR）`'epbig'`（こおりくん・こおりくん・こおりくん。v0.2 で BAR・BAR・BAR から変更）、`stock`: 残りの 1G連 の数 |
+| `bonus:start` | `{ bonus, games, inAt }` | ボーナス開始。`inAt`: AT 中のボーナスなら `true`（こおりくん揃いは特化ゾーン確定の意味になる。AT のゲーム数は止まったまま） |
+| `bonus:game` | `{ bonus, left }` | ボーナスの1ゲーム |
+| `bonus:nerae` | `{ color, win }` | 「こおりを狙え」カットイン。AT 当選（AT 中は特化ゾーン当選）のゲームのレバーで出す。ガセもある |
+| `bonus:end` | `{ bonus, at, stock }` | ボーナス終了。`at`: このあと AT が始まる（AT 中のボーナスでは `false`。終わったら AT に戻る）/ `stock`: 残りの 1G連 の数 |
+
+- エピソードBIG は入賞した時点で AT 確定（AT 中は特化ゾーン確定）です。最後のゲームの `bonus:nerae` は出しません。
+
+### AT
+
+| type | データ | いつ |
+|---|---|---|
+| `at:start` | `{ games, cause }` | AT 開始。`cause`: `'bonus'` `'direct'` |
+| `at:game` | `{ left, nav }` | AT の1ゲーム。`nav`: 押し順 `[リール, …]`（ナビのないゲームは `null`）。ふだんは中押し・右押しの4択（`[1,0,2]` `[1,2,0]` `[2,0,1]` `[2,1,0]`）。**`nav[0]` が `0`（順押しナビ）はボーナスか特化ゾーンの当選が確定**（演出側は熱い演出にする） |
+| `at:add` | `{ games, left, attacker, enemy }` | 直接上乗せ（レバーのとき）。`attacker`: `'yasu'` `'tamu'` `'dake'` `'onioni'` `'sword'` `'hammer'` `'kill'`、`enemy`: キャラの id |
+| `at:miss` | `{ attacker, enemy }` | AT 中のレア役で、ボーナス・特化ゾーン・直接上乗せのどれもなかった（レバーのとき）。演出側は「ミス！」。全部のレア役で出す必要はない |
+| `at:boss` | `{ boss, final, win }` | AT 中のボーナスの戦闘。`boss`: `'daishi'` `'zumitani'` `'runaya'` `'nozoema'` `'maou'`（ボーナスの間は同じ相手）。下の「AT 中のボーナスの流れ」 |
+| `at:judge` | `{ win, bonus }` | （v0.2 新）前兆の途中で AT のゲーム数がなくなったとき、0 になったゲームの終わりに出す。`win`: 本前兆ならその場でボーナス当選（このあと `bonus:standby`。AT 中のボーナス扱い）、ガセなら AT 終了（このあと `at:end`）。`bonus`: 当たったボーナスの種類か `null` |
+| `at:end` | `{ games, payout, hint }` | AT 終了。`hint`: 終了画面の設定示唆の画像（下の表。なければ `'team'`） |
+
+**AT 中のボーナスの流れ**（v0.2。内部処理の担当の変更希望を受けたもの）：
+
+1. ボーナスの最初のゲームのレバーで `at:boss`（`final: false`）→ 相手の登場。
+2. 特化ゾーンに当たったゲームのレバーで `bonus:nerae`（`win: true`）→ こおりくんが揃う（`game:end` の `win: 'koori'`）→ そのゲームの終わりに `at:boss`（`final: true, win: true`）→ 演出側は「勝利 → 特化ゾーン確定」。勝ちを先に見せると、カットインの色の期待度が意味を持たなくなるため。
+3. 当たらないままボーナスが終わるときは、最後のゲームのレバーで `at:boss`（`final: true, win: false`）→ 敗北。
+4. AT 中のエピソードBIG は特化ゾーン確定なので、`at:boss` は出しません（入賞した時点で確定）。
+5. ボーナスのあとは AT に戻ります。特化ゾーンに当たっていたら `tokka:start` から。
+
+`at:end` の `hint`（画面設計書 7-1）：
+
+| hint | 画像 | 示唆 |
+|---|---|---|
+| `'team'` | チームばりきつよめの集合 | 示唆なし（いちばん出やすい） |
+| `'fiveDX'` | チーム5DX | 奇数設定が少し出やすい |
+| `'ask3'` | チームASK-3 | 偶数設定が少し出やすい |
+| `'muscle'` | チームお願いマッスル | 高設定が少し出やすい |
+| `'shitenno'` | 四天王の集合 | 設定4以上確定 |
+| `'maou'` | 大魔王ASO | 設定5以上確定 |
+| `'all'` | 全員集合（金） | 設定6確定 |
+
+### 上乗せ特化ゾーン
+
+1セット3G の自力継続型。演出は「魔王の褒美」「こおり大腸炎」の2パターンで、どちらにするかはプレイヤーが選びます（選ぶのは演出側。見せ方だけで、上乗せや継続の確率は同じ）。
+
+| type | データ | いつ |
+|---|---|---|
+| `tokka:stock` | `{ stock }` | 特化ゾーンに当たった（AT 中のレア役・特化ゾーン中のレア役）。当たったゲームの終わり（`game:end` のあと）。AT 中のボーナスでの当選は、こおりくん揃いと `at:boss` で知らせるので出さない |
+| `tokka:start` | `{ stock }` | 特化ゾーンが始まる。次のレバーから特化ゾーンのゲーム。`stock`: 始まったあとに残っているストックの数 |
+| `tokka:game` | `{ set, game, add, guarantee }` | 特化ゾーンの1ゲーム（レバーのとき）。`add`: このゲームの上乗せ（5G 以上）、`guarantee`: このゲームのあとで継続が確定しているセットの数 |
+| `tokka:set` | `{ set, cont, revive }` | セットの3ゲーム目の終わり。`revive`: リプレイ以上を引けなかったが、継続率テーブルで続いた（「復活！」） |
+| `tokka:end` | `{ total, sets, left }` | 特化ゾーンの終わり。`left`: AT の残りゲーム数（上乗せしたあと） |
+
+- 特化ゾーンのあいだは `at:game` を出しません（AT のゲーム数は減らない）。上乗せは `tokka:game` の `add` で伝えます（`at:add` は出さない）。
+- 特化ゾーンの途中で特化ゾーンをストックしたら、終わったときに続けて `tokka:start`。ボーナスをストックしたら、終わったときに前兆（`zencho:start` の `cause: 'stock'`）。
+- AT のゲーム数が 0 になっても特化ゾーンのストックがあれば、`at:end` の代わりに `tokka:start`。
+
+---
+
+## 3. デバッグ（`machine.debug`）
+
+演出の確認に使います。本物の内部処理にも同じものを用意してください（仕様書「演出確認用のデバッグ機能」）。
+
+| 名前 | 中身 |
+|---|---|
+| `internal()` | 内部の状態（モード・ステート・当たるところ・前兆・ストック）。デバッグ画面に出すだけ |
+| `setNextRole(role)` | 次のゲームの役（`'none'` `'bell'` `'replay'` `'weakCherry'` `'strongCherry'` `'midCherry'` `'weakSuika'` `'strongSuika'` `'chance'`） |
+| `setState(state)` / `setMode(mode)` / `setGames(n)` | ステート・モード・ゲーム数を変える |
+| `startZencho({ real, team, length })` | 前兆を始める（AT 中も） |
+| `ceilingSoon()` | 天井の5G前にする |
+| `direct()` | 次のゲームで AT 直撃 |
+| `bonus(type)` | ボーナス確定にする |
+| `heaven(who)` | 天国のカットインを出す |
+| `tokka()` | AT 中に特化ゾーンをストックする |
+| `atBonus(type)` | AT 中にボーナス確定にする（v0.2。内部処理の担当が用意する） |
+| `atEndSoon()` | AT の残りを数ゲームにする（v0.2。内部処理の担当が用意する） |
+
+---
+
+## 4. 仮組の内部処理について
+
+- 仕様書の表（モード・ゾーン・ステート・レア役の当選率・ボーナスの振り分け・払い出しなど）は写してあります。
+- 決まっていない値は「仮」です（`src/logic/config.js` の【仮】）。内部処理の担当が差しかえます。
+- AT 中のボーナス・前兆・`at:judge`・`at:miss`・`hint`・順押しナビは、演出の確認ができる最小限だけ入れてあります。
+- 押し順ベルの取りこぼし（ナビとちがう押し順で 0枚）は、仮組では作っていません（いつも 15枚）。
+
+---
+
+## 5. 内部処理の担当とのやりとり
+
+### 2026-10-20 演出側の提案 → 2026-10-21 回答（反映済み）
+
+- `at:boss`・`bonus:start` の `inAt`・`at:miss`・`at:end` の `hint`・`tokka:*` は、提案の形で出す（2章に入れた）。
+- AT 中のボーナスの見せ方は、内部処理の担当の希望で「狙え → 揃い → 勝利」の順に変えた（2章「AT 中のボーナスの流れ」）。
+- 前兆中に AT のゲーム数がなくなったときの「+50G で継続」（`at:continue`）はやめて、その場で当落を告知する。イベント名とデータは演出側が決める → `at:judge { win, bonus }` にした。
+- エピソードBIG の図柄は こおりくん・こおりくん・こおりくん。最後のゲームの `bonus:nerae` は出さない。BAR・BAR・BAR は役ではなくなった（BAR は REG の右リール専用）。
+- `game:end` の `win` に `'cherry'` `'suika'` を足し、`'epbig'` は `'koori'` に統一した。
+- `zencho:start` の `cause` に `'stock'` を足した。AT 中の前兆も同じイベントで出す。
+- `at:game` の `nav` は中押し・右押しの4択。順押しナビは当選確定。
+- チャンス目A はベルの小V（左上段・中中段・右上段）。チャンス目は A・B ともリプレイ扱い（再遊技）。
+- デバッグの `atBonus(type)`・`atEndSoon()` は内部処理の担当が用意する。
+- 合体は `src/logic/` を置きかえる形。
+
+### 2026-10-21 演出側からのお願い（追加）
+
+- **AT 直撃のゲームの出目は、チャンス目A（ベルの小V）で止めてください**（ユーザー指定）。チャンス目はリプレイ扱いなので、払い出しと次のゲームが無料なのは今のリプレイと同じです。`game:end` の `win` は `'replay'`。仮組はこのとおりにしてあります。

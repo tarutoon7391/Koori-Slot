@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# 仕様書の原本 (Word) と書類の zip は手元だけに置く
+*.docx
+*.zip
+~$*
