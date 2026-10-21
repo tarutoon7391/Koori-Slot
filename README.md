@@ -97,7 +97,7 @@ Railway のサービスはまだ作っていません。設定はそろえてあ
 
 1. Railway で New Project → **Deploy from GitHub repo** → このリポジトリ（`Koori-Slot`）を選ぶ。
 2. サービス名を `Koori-Slot` にする。環境変数は不要（`PORT` は Railway が渡す）。
-3. ビルドは `railway.json` のとおり Nixpacks。Build Command は `npm run build`（`prestart` でも走るので、指定しなくても動く）、Start Command は `npm start`（`vite preview --host 0.0.0.0 --port $PORT`）。
+3. ビルドは `railway.json` のとおり **Railpack**（Nixpacks を指定すると今の Railway の builder v4 ではログなしで「Failed to build an image」になる。2026-10-21 に確認）。Build Command は `npm run build`（`prestart` でも走るので、指定しなくても動く）、Start Command は `npm start`（`vite preview --host 0.0.0.0 --port $PORT`）。
 4. Settings → Networking → Generate Domain で公開 URL を作る。ヘルスチェックは `/`。
 5. 以後は `main` に push すると自動でデプロイされる。
 

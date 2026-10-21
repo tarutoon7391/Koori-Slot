@@ -50,7 +50,7 @@
 
 ### フェーズ7: Railway の準備
 
-- `vite`・`@vitejs/plugin-react` を `dependencies` に移した。`railway.json` を追加。`prestart` で `npm run build` が走る。
+- `vite`・`@vitejs/plugin-react` を `dependencies` に移した。`railway.json` を追加（ビルダーは RAILPACK。NIXPACKS は builder v4 でログなしに失敗した）。`prestart` で `npm run build` が走る。
 - `README.md` を Railway 公開向けに書き直した。`play.html` を作り直した。
 
 ### 残っている【仮】の値（ユーザー確認待ち）
