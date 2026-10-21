@@ -106,6 +106,9 @@ export function createGame({ setting = 1 } = {}) {
             keep({ kind: 'stop', reel });
             return false;
         }
+        // 押し順ナビとちがうリールを押したら警告 (ナビに従ってください)。止めるのは止める (押し順ベルなら取りこぼす)
+        const nav = director.snapshot().nav;
+        if (nav && reel !== nav.find(r => !stopped[r])) director.navWarning();
         const last = stopped.filter(Boolean).length === 2;
         if (last) director.holdForReels();
         const press = reels.pressIndex(reel);
@@ -129,7 +132,9 @@ export function createGame({ setting = 1 } = {}) {
             if (i !== undefined) keep({ kind: 'stop', reel: i });
             return false;
         }
-        const i = [0, 1, 2].find(r => !stopped[r] && !queued(r));
+        // 押し順ナビがあるときはナビの順、ないときは左から
+        const nav = director.snapshot().nav;
+        const i = (nav || [0, 1, 2]).find(r => !stopped[r] && !queued(r));
         if (i !== undefined) return stop(i);
         if (!stopped.every(Boolean)) return false;   // 残りの停止は順番待ち
         return lever();

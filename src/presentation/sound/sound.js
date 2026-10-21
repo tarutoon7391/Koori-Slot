@@ -90,6 +90,8 @@ const SOUNDS = {
     blackout: () => tone(110, 0, 0.8, { slideTo: 40, volume: 0.1, type: 'sawtooth' }),
     fanfare: () => [784, 784, 784, 1047, 988, 1047, 1319].forEach((f, i) => tone(f, i * 0.12, 0.22, { volume: 0.08 })),
     count: () => tone(880, 0, 0.12, { volume: 0.06 }),
+    // 押し順ナビとちがう押し順の警告 (低いブザーを2回)
+    warn: () => [0, 0.2].forEach(s => tone(196, s, 0.15, { volume: 0.09, type: 'square' })),
     // 「こおりを狙え」: テンパイ (あおる音) / こおりくん揃い / AT確定 (専用の当たり音。声の代わり。画面設計書 7-2)
     tenpai: () => [0, 0.16, 0.32].forEach(s => tone(880, s, 0.12, { slideTo: 1760, volume: 0.06, type: 'sawtooth' })),
     kooriAlign: () => { noise(0, 0.25, 0.12); tone(2093, 0, 0.5, { volume: 0.09 }); tone(3136, 0.05, 0.6, { volume: 0.06, type: 'triangle' }); },

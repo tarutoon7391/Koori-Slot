@@ -32,6 +32,7 @@ const LONG_PRESS_MS = 900;     // コオリハンマーの長押しでゲージ�
 const SELECT_MS = 10000;       // 特化ゾーンのパターンを選ぶ時間 (たったら、そのとき選んでいるほうで始める。画面設計書 6章の案)
 const JUDGE_WAIT_MS = 4000;    // ラストジャッジで PUSH を待つ時間 (押さなくても進む)
 const JUDGE_RESULT_MS = 2400;  // ラストジャッジの結果を見せる時間
+const NAV_WARN_MS = 1600;      // 「ナビに従ってください」を出す時間
 
 const LEAVE_MS = 200;          // 前のカットインが右へはけて消えるまで
 const CUTIN_KINDS = ['cutin', 'heaven'];   // 重ねるカットイン (必殺技のカットインは v.spCut)
@@ -90,6 +91,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         tokkaEnd: null,    // 特化ゾーン終了の画面
         bossFx: null,      // AT 中のボーナスの相手の登場・勝利・敗北: { kind, boss, since }
         judge: null,       // AT 0G の当落告知 (ラストジャッジ): { team, win, bonus, phase, since }
+        navWarn: null,     // 押し順ナビとちがう押し順で押したときの警告: { since }
         at: null,
         spCut: null,       // 必殺技のカットイン: { who, name, side, since }
         talk: null,        // 敵のセリフの吹き出し: { who, line, since }
@@ -906,6 +908,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         if (v.atEnd) drawAtEnd(ctx, t, t - v.atEnd.since, v.atEnd);
         if (v.tenjo) drawTenjo(ctx, t, t - v.tenjo.since, v.tenjo.who);
         if (v.direct) drawDirect(ctx, t, t - v.direct.since, v.direct.phase);
+        // 押し順ナビの警告 (ナビに従ってください)
+        if (v.navWarn && t - v.navWarn.since < NAV_WARN_MS) {
+            const k = t - v.navWarn.since;
+            const blink = Math.floor(k / 160) % 2 === 0;
+            rect(ctx, 0, 62, W, 44, `rgba(120,0,10,${blink ? 0.88 : 0.7})`);
+            rect(ctx, 0, 62, W, 2, '#ff3a3a');
+            rect(ctx, 0, 104, W, 2, '#ff3a3a');
+            text(ctx, '⚠ ナビに従ってください', W / 2, 84, { size: 18, color: '#ffffff', lw: 4, stroke: '#3a0008' });
+        }
         if (v.banner) {
             rect(ctx, 0, 70, W, 40, 'rgba(0,0,0,.75)');
             text(ctx, v.banner.text, W / 2, 90, { size: 16, color: v.banner.rainbow ? rainbow(ctx, 60, 0, 260, 0) : '#ffffff', lw: 4 });
@@ -932,6 +943,11 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                 reelHold = false;
                 if (!hold) pump();
             }
+        },
+        // 押し順ナビとちがうリールを押した
+        navWarning() {
+            v.navWarn = { since: now };
+            sound.play('warn');
         },
         // PUSH ボタン
         push() {

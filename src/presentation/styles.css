@@ -134,7 +134,9 @@ body {
     background: #2a3a5a;
     border: 2px solid #fff;
 }
-.nav-num.first { background: #ff3a3a; }
+.nav-num.first { background: #ff3a3a; animation: nav-blink .5s ease-in-out infinite alternate; }
+.nav-num.done { background: #1a2230; border-color: #3a4656; color: #6a7686; }
+@keyframes nav-blink { to { box-shadow: 0 0 12px #ff3a3a; filter: brightness(1.25); } }
 .nav-num.off { background: #111820; border-color: #1e2833; }
 
 .reels {
@@ -258,7 +260,7 @@ body {
 .stop:active { transform: translateY(3px); box-shadow: 0 1px 0 #0a0e14; }
 
 @media (prefers-reduced-motion: reduce) {
-    .push.lit-rainbow, .push.waiting { animation: none; }
+    .push.lit-rainbow, .push.waiting, .nav-num.first { animation: none; }
 }
 
 /* ----- 横 (デバッグ) ----- */

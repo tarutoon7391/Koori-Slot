@@ -38,7 +38,7 @@ function Lcd({ game }) {
     return <canvas ref={ref} className="lcd" aria-label="液晶" onPointerDown={onPointerDown} />;
 }
 
-function Reels({ game, nav }) {
+function Reels({ game, nav, stopped }) {
     const ref = useRef(null);
     useEffect(() => {
         game.reels.attach(ref.current);
@@ -49,13 +49,19 @@ function Reels({ game, nav }) {
             window.removeEventListener('resize', onResize);
         };
     }, [game]);
-    // 押し順ナビ (リールの上。画面設計書 5-1)
+    // 押し順ナビ (リールの上。画面設計書 5-1): 次に押すリールの数字だけ赤く光らせ、押したリールは暗くする
     const order = nav ? [0, 1, 2].map(reel => nav.indexOf(reel) + 1) : null;
+    const nextReel = nav ? nav.find(reel => !stopped[reel]) : undefined;
+    const navClass = i => {
+        if (!order) return 'nav-num off';
+        if (stopped[i]) return 'nav-num done';
+        return i === nextReel ? 'nav-num first' : 'nav-num';
+    };
     return (
         <div className="reel-box">
             <div className="nav" aria-live="polite">
                 {[0, 1, 2].map(i => (
-                    <span key={i} className={order ? (order[i] === 1 ? 'nav-num first' : 'nav-num') : 'nav-num off'}>
+                    <span key={i} className={navClass(i)}>
                         {order ? order[i] : ''}
                     </span>
                 ))}
@@ -101,7 +107,7 @@ export default function Cabinet({ game }) {
             <div className="lcd-frame">
                 <Lcd game={game} />
             </div>
-            <Reels game={game} nav={d.nav} />
+            <Reels game={game} nav={d.nav} stopped={stopped} />
             <div className="leds">
                 <span>CREDIT <b>{d.credit}</b></span>
                 <span>PAYOUT <b>{d.lastPayout}</b></span>
