@@ -12,7 +12,7 @@ export const EVENTS = {
     LEVER: 'lever',               // { game, phase, free }  phase: 'normal' | 'standby' | 'bonus' | 'at'
     NOTICE: 'notice',             // { kind, timing, ... }  演出の抽選結果 (下の NOTICE_KINDS)
     REEL_STOP: 'reel:stop',       // { reel, top, slip, order }  top: 止まった上段の番号 (リール配列 v1.0)
-    GAME_END: 'game:end',         // { cols, win, payout, credit }  win: 'bell' | 'replay' | 'cherry' | 'suika' | 'big' | 'reg' | 'koori' | null
+    GAME_END: 'game:end',         // { cols, win, payout, credit }  win: 'bell' | 'replay' | 'cherry' | 'suika' | 'big' | 'reg' | 'koori' | null (押し順ベルの取りこぼしは null・payout 0)
 
     // ----- 通常時 -----
     STAGE: 'stage',               // { place, floor, state }  place: 'floor' | 'middle'(前兆の中間階層)。floor: 階 / state: 'low' | 'high' | 'super'
@@ -27,8 +27,8 @@ export const EVENTS = {
     // ----- 疑似ボーナス -----
     BONUS_STANDBY: 'bonus:standby', // { bonus, stock }  ボーナス確定。次のゲームで図柄がそろう (bonus: 'big' 7・7・7 | 'reg' 7・7・BAR | 'epbig' こおりくん×3)
     BONUS_START: 'bonus:start',   // { bonus, games, inAt }  inAt: AT 中のボーナス
-    BONUS_GAME: 'bonus:game',     // { bonus, left }
-    BONUS_NERAE: 'bonus:nerae',   // { color, win }  「こおりを狙え」カットイン (win: こおりくんがそろう)
+    BONUS_GAME: 'bonus:game',     // { bonus, left, nav }  nav: 押し順ベルのナビ (at:game と同じ形。ないゲームは null。順押しナビは AT・特化ゾーンの当選確定)
+    BONUS_NERAE: 'bonus:nerae',   // { color, win }  「こおりを狙え」カットイン (win: こおりくんがそろう。false はガセ: 押し順ごとの外し方で止まる)
     BONUS_END: 'bonus:end',       // { bonus, at, stock }  at: AT へ / stock: 残りの 1G連 の数
 
     // ----- AT -----
@@ -43,7 +43,7 @@ export const EVENTS = {
     // ----- 上乗せ特化ゾーン -----
     TOKKA_STOCK: 'tokka:stock',   // { stock }  特化ゾーンに当たった (当たったゲームの終わり)
     TOKKA_START: 'tokka:start',   // { stock }  特化ゾーンが始まる (次のレバーから)
-    TOKKA_GAME: 'tokka:game',     // { set, game, add, guarantee }  特化ゾーンの1ゲーム (レバーのとき)
+    TOKKA_GAME: 'tokka:game',     // { set, game, add, guarantee, nav }  特化ゾーンの1ゲーム (レバーのとき)。nav: 押し順ベルのナビ
     TOKKA_SET: 'tokka:set',       // { set, cont, revive }  セットの終わり
     TOKKA_END: 'tokka:end'        // { total, sets, left }  特化ゾーンの終わり
 };

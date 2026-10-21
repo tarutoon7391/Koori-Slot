@@ -1,27 +1,41 @@
-// 仮組の内部処理のテスト (node --test tests/)
+// 内部処理のテスト (node --test tests/)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMachine, EVENTS, REEL_LENGTH } from '../src/logic/index.js';
-import { SHAPES, combosFor, createReelControl } from '../src/logic/reelControl.js';
-import { gridAt, middleWin } from '../src/logic/reels.js';
+import { createMachine, EVENTS, REEL_LENGTH, STRIPS } from '../src/logic/index.js';
+import { CONFIG } from '../src/logic/config.js';
+import { SHAPES, combosFor, createReelControl, bellShape, kooriGaseShape } from '../src/logic/reelControl.js';
+import { BONUS_SYMBOLS, gridAt, middleWin } from '../src/logic/reels.js';
 import { createRng } from '../src/logic/rng.js';
 
-// 1ゲーム回す (押す位置はでたらめ、押し順もでたらめ)
-function play(m, rng) {
-    assert.ok(m.lever());
-    const order = rng.pick([[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]);
-    order.forEach(reel => m.stop(reel, rng.int(0, REEL_LENGTH - 1)));
+const ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+const RARE_SHAPES = ['weakCherry', 'strongCherry', 'midCherry', 'weakSuika', 'strongSuikaA', 'strongSuikaB', 'chanceA', 'chanceB'];
+const isBonus = sym => BONUS_SYMBOLS.has(sym);
+const sumOf = table => Object.values(table).reduce((a, b) => a + b, 0);
+const near = (x, y) => Math.abs(x - y) < 1e-9;
+
+// 設定を一部だけ変えた台
+function machineWith(patch, opts = {}) {
+    const config = structuredClone(CONFIG);
+    patch(config);
+    return createMachine({ config, ...opts });
 }
 
-test('どの出目の形も、どこを押しても作れる', () => {
+// 1ゲーム回す (押す位置はでたらめ。order を渡さなければ押し順もでたらめ)
+function play(m, rng, order = null) {
+    assert.ok(m.lever());
+    (order || rng.pick(ORDERS)).forEach(reel => m.stop(reel, rng.int(0, REEL_LENGTH - 1)));
+}
+
+// ----- 出目の形・リール制御 -----
+
+test('どの出目の形も、どこを押しても作れる (ガセ狙え・ベルこぼしを含む)', () => {
     const rng = createRng(1);
     for (const shape of Object.keys(SHAPES)) {
         assert.ok(combosFor(shape).length > 0, shape);
         for (let i = 0; i < 200; i++) {
             const ctrl = createReelControl(shape);
-            const order = rng.pick([[0, 1, 2], [2, 1, 0], [1, 0, 2]]);
-            order.forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
-            assert.ok(SHAPES[shape](gridAt(ctrl.tops)), shape);
+            rng.pick(ORDERS).forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
+            assert.ok(SHAPES[shape](gridAt(ctrl.tops), ctrl.tops), shape);
         }
     }
 });
@@ -34,15 +48,159 @@ test('ベル・リプレイ・ボーナスは中段にそろう (エピソード
     }
 });
 
-test('通常時を長く回しても止まらず、前兆・ボーナス・AT が起きる', () => {
+test('リール配列 v1.0 の図柄数 (BAR/7/こおりくん: 左各1・中各2・右各2、チェリー: 左3・中0・右0、スイカ各3、ベル各6、リプレイ各6)', () => {
+    const count = (reel, sym) => STRIPS[reel].filter(x => x === sym).length;
+    assert.equal(REEL_LENGTH, 21);
+    for (const reel of [0, 1, 2]) {
+        assert.equal(STRIPS[reel].length, 21);
+        for (const sym of ['bar', 'seven', 'koori']) assert.equal(count(reel, sym), reel === 0 ? 1 : 2, `${sym} ${reel}`);
+        assert.equal(count(reel, 'cherry'), reel === 0 ? 3 : 0);
+        assert.equal(count(reel, 'suika'), 3);
+        assert.equal(count(reel, 'bell'), 6);
+        assert.equal(count(reel, 'replay'), 6);
+    }
+});
+
+test('仕様書「レア役の停止形」は全部の形について作れる。kooriGase と bellMiss も', () => {
+    for (const shape of [...RARE_SHAPES, 'kooriGase', 'kooriGaseJun', 'kooriGaseHasami', 'kooriGaseNaka', 'bellMiss']) {
+        assert.ok(combosFor(shape).length > 0, shape);
+    }
+});
+
+test('中段チェリーは中段にボーナス図柄が一直線にならない。強チェリーは中リール中段がボーナス図柄にならない', () => {
+    for (const tops of combosFor('midCherry')) {
+        const cols = gridAt(tops);
+        assert.ok(!cols.every(col => isBonus(col[1])), `中段チェリー ${tops}`);
+        assert.equal(middleWin(cols), null);
+    }
+    for (const tops of combosFor('strongCherry')) {
+        const cols = gridAt(tops);
+        assert.ok(!isBonus(cols[1][1]), `強チェリー ${tops}`);
+    }
+});
+
+test('チャンス目A はベルの小V で、中段は入賞しない', () => {
+    const rng = createRng(3);
+    for (let i = 0; i < 100; i++) {
+        const ctrl = createReelControl('chanceA');
+        [0, 1, 2].forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
+        const cols = gridAt(ctrl.tops);
+        assert.equal(cols[0][0], 'bell');
+        assert.equal(cols[1][1], 'bell');
+        assert.equal(cols[2][0], 'bell');
+        assert.equal(middleWin(cols), null);
+    }
+});
+
+test('ガセ「狙え」: 中押しでは中リール中段にこおりくんが来ない。はさみ押しでは左右がテンパイしない。どの押し順でも揃わない', () => {
+    const rng = createRng(12);
+    for (const order of ORDERS) {
+        for (let i = 0; i < 300; i++) {
+            const ctrl = createReelControl(kooriGaseShape);
+            order.forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
+            const cols = gridAt(ctrl.tops);
+            assert.notEqual(middleWin(cols), 'koori', `揃った ${order}`);
+            if (order[0] === 1) {
+                assert.notEqual(cols[1][1], 'koori', `中押しで中リール中段がこおりくん ${order}`);
+                assert.ok(!cols.some(col => col.includes('koori')), `中押しで枠内にこおりくん ${order}`);
+            }
+            if (order[0] === 0 && order[1] === 2) {
+                assert.ok(!(cols[0][1] === 'koori' && cols[2][1] === 'koori'), `はさみ押しでテンパイ ${order}`);
+                assert.equal(cols[2][2], 'koori', 'はさみ押しは右下段にこおりくん');
+            }
+            if (order[0] === 0 && order[1] === 1) {
+                assert.equal(cols[0][1], 'koori');
+                assert.equal(cols[1][1], 'koori', '順押しは中リールまでテンパイ');
+                assert.equal(cols[2][2], 'koori', '順押しは右下段で外す');
+            }
+        }
+    }
+});
+
+test('押し順ベルの形: 正解の順なら中段ベル揃い、外れた時点でベルこぼし (中段にベルが2つ)。第1停止がどこでもこぼし目が作れる', () => {
+    const rng = createRng(21);
+    const navs = [[1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    // 'bell' の形で第1停止したあと (中段ベル) でも、こぼし目が作れること
+    for (let reel = 0; reel < 3; reel++) {
+        for (const top of new Set(combosFor('bell').map(t => t[reel]))) {
+            assert.ok(combosFor('bellMiss').some(t => t[reel] === top), `こぼし目が作れない: リール ${reel} 位置 ${top}`);
+        }
+    }
+    for (const nav of navs) {
+        for (const order of ORDERS) {
+            for (let i = 0; i < 60; i++) {
+                const ctrl = createReelControl(bellShape(nav));
+                order.forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
+                const cols = gridAt(ctrl.tops);
+                const correct = order.every((r, k) => r === nav[k]);
+                if (correct) assert.equal(middleWin(cols), 'bell', `正解 ${nav} ${order}`);
+                else {
+                    assert.equal(middleWin(cols), null, `不正解で入賞 ${nav} ${order}`);
+                    assert.equal(cols.filter(col => col[1] === 'bell').length, 2, `こぼし目 ${nav} ${order}`);
+                    assert.ok(!cols[0].includes('cherry'), 'こぼし目に左チェリーがない');
+                }
+            }
+        }
+    }
+    // 順押しナビは押し順不問
+    assert.equal(bellShape([0, 1, 2]), 'bell');
+});
+
+// ----- config の検算 -----
+
+test('config.js の振り分け表の合計は 100', () => {
+    for (const [mode, m] of Object.entries(CONFIG.modes)) assert.ok(near(sumOf(m.zones), 100), `zones ${mode}`);
+    for (const [mode, t] of Object.entries(CONFIG.modeMove)) assert.ok(near(sumOf(t), 100), `modeMove ${mode}`);
+    for (const [mode, t] of Object.entries(CONFIG.bonusSplit)) assert.ok(near(sumOf(t), 100), `bonusSplit ${mode}`);
+    assert.ok(near(sumOf(CONFIG.initialMode), 100));
+    assert.ok(near(sumOf(CONFIG.stockSplit), 100));
+    assert.ok(near(sumOf(CONFIG.at.state), 100));
+    assert.ok(near(sumOf(CONFIG.tokka.contTable), 100));
+    for (const [role, t] of Object.entries(CONFIG.tokka.addTable)) assert.ok(near(sumOf(t), 100), `addTable ${role}`);
+    for (const [role, t] of Object.entries(CONFIG.at.directAdd)) assert.ok(near(sumOf(t), 100), `directAdd ${role}`);
+    for (const key of ['team', 'rounds', 'cutin', 'nerae', 'button', 'boss']) {
+        for (const [side, t] of Object.entries(CONFIG.show[key])) assert.ok(near(sumOf(t), 100), `show.${key}.${side}`);
+    }
+    for (const [setting, t] of Object.entries(CONFIG.show.hint)) assert.ok(near(sumOf(t), 100), `hint ${setting}`);
+    // 役の表: 出現率の合計が 1 を超えない (残りがハズレ)
+    for (const [name, t] of Object.entries(CONFIG.roles)) {
+        const sum = Object.values(t).filter(x => x > 0).reduce((a, x) => a + 1 / x, 0);
+        assert.ok(sum < 1, `roles.${name} の合計 ${sum}`);
+    }
+    // AT 中のレア役抽選: ボーナス + 特化ゾーンが 100 を超えない
+    for (const state of ['low', 'high', 'super']) {
+        for (const role of Object.keys(CONFIG.at.bonusRate[state])) {
+            assert.ok(CONFIG.at.bonusRate[state][role] + CONFIG.tokka.rate[state][role] <= 100, `${state} ${role}`);
+        }
+    }
+});
+
+test('ボーナス中の AT 当選率は BIG 約40%・REG 約20% (roles.bonus で検算)', () => {
+    const t = CONFIG.roles.bonus;
+    let p = 0;
+    for (const [role, rate] of Object.entries(CONFIG.bonusAt)) p += (1 / t[role]) * (rate / 100);
+    const big = 1 - (1 - p) ** CONFIG.bonusGames.big;
+    const reg = 1 - (1 - p) ** CONFIG.bonusGames.reg;
+    assert.ok(big > 0.38 && big < 0.44, `BIG ${big}`);
+    assert.ok(reg > 0.17 && reg < 0.23, `REG ${reg}`);
+});
+
+// ----- 通常時 -----
+
+test('通常時を長く回しても止まらず、前兆・ボーナス・AT・特化ゾーン・ガセ狙えが起きる', () => {
     const m = createMachine({ setting: 1, seed: 42 });
     const rng = createRng(7);
     const count = {};
-    m.on(e => { count[e.type] = (count[e.type] || 0) + 1; });
+    let gase = 0;
+    m.on(e => {
+        count[e.type] = (count[e.type] || 0) + 1;
+        if (e.type === EVENTS.BONUS_NERAE && !e.win) gase++;
+    });
     for (let i = 0; i < 60000; i++) play(m, rng);
-    for (const type of [EVENTS.ZENCHO_START, EVENTS.ZENCHO_END, EVENTS.BONUS_START, EVENTS.BONUS_END, EVENTS.STAGE, EVENTS.ZONE, EVENTS.AT_START, EVENTS.AT_END]) {
+    for (const type of [EVENTS.ZENCHO_START, EVENTS.ZENCHO_END, EVENTS.BONUS_START, EVENTS.BONUS_END, EVENTS.STAGE, EVENTS.ZONE, EVENTS.AT_START, EVENTS.AT_END, EVENTS.TOKKA_START, EVENTS.TOKKA_END, EVENTS.AT_BOSS]) {
         assert.ok(count[type] > 0, `${type} が起きない`);
     }
+    assert.ok(gase > 0, 'ガセ狙えが起きない');
     // 前兆は必ず終わる (AT 中に AT が終わったときはラストジャッジで終わる)
     assert.ok(Math.abs(count[EVENTS.ZENCHO_START] - count[EVENTS.ZENCHO_END] - (count[EVENTS.AT_JUDGE] || 0)) <= 1);
 });
@@ -105,7 +263,186 @@ test('AT 直撃 (デバッグ) で AT が始まり、出目はチャンス目A �
     assert.equal(m.snapshot().phase, 'at');
 });
 
-test('特化ゾーン (仮組): ストック → 始まり → 3G ずつのセット → 終わり。上乗せは AT の残りに足され、AT のゲーム数は減らない', () => {
+test('game:end の win: チェリー・スイカは役で、チャンス目はリプレイ扱い。共通ベルは押し順不問で 15枚', () => {
+    for (const [role, win, payout] of [['weakCherry', 'cherry', 2], ['strongSuika', 'suika', 5], ['chance', 'replay', 0], ['commonBell', 'bell', 15]]) {
+        const m = createMachine({ seed: 21 });
+        const rng = createRng(1);
+        let end = null;
+        m.on(e => { if (e.type === EVENTS.GAME_END) end = e; });
+        m.debug.setNextRole(role);
+        play(m, rng, [0, 1, 2]);
+        assert.equal(end.win, win, role);
+        assert.equal(end.payout, payout, role);
+        if (role === 'chance') assert.ok(m.snapshot().free, 'チャンス目は次のゲームが無料');
+    }
+});
+
+test('通常時の押し順ベルはナビなしで正解 1/4 (正解なら 15枚・中段ベル揃い、不正解なら 0枚・ベルこぼし目)', () => {
+    const m = createMachine({ seed: 31 });
+    const rng = createRng(31);
+    let hit = 0;
+    let miss = 0;
+    const n = 2000;
+    m.on(e => {
+        if (e.type !== EVENTS.GAME_END) return;
+        if (e.win === 'bell') {
+            hit++;
+            assert.equal(e.payout, 15);
+        } else {
+            miss++;
+            assert.equal(e.payout, 0);
+            assert.equal(e.win, null);
+            assert.equal(e.cols.filter(col => col[1] === 'bell').length, 2, 'こぼし目');
+        }
+    });
+    for (let i = 0; i < n; i++) {
+        if (m.snapshot().phase !== 'normal') break;
+        m.debug.setNextRole('bell');
+        play(m, rng, [0, 1, 2]);   // 順押しは必ず不正解
+    }
+    assert.equal(hit, 0, '順押しでは当たらない');
+    assert.ok(miss > 0);
+    // 中押し・右押しの4択からでたらめに押せば約 1/4 で正解
+    const m2 = createMachine({ seed: 32 });
+    const rng2 = createRng(32);
+    let hit2 = 0;
+    let total = 0;
+    m2.on(e => { if (e.type === EVENTS.GAME_END) { total++; if (e.win === 'bell') hit2++; } });
+    for (let i = 0; i < n && m2.snapshot().phase === 'normal'; i++) {
+        m2.debug.setNextRole('bell');
+        play(m2, rng2, rng2.pick(ORDERS.filter(o => o[0] !== 0)));
+    }
+    assert.ok(hit2 / total > 0.18 && hit2 / total < 0.32, `正解率 ${hit2 / total}`);
+});
+
+// ----- AT -----
+
+test('AT 中の押し順ベル: ナビどおりなら 15枚、違う押し順なら 0枚でベルこぼし目。順押しナビのときは押し順不問で 15枚', () => {
+    const rng = createRng(6);
+    // ナビどおり / 外し
+    for (const follow of [true, false]) {
+        const m = createMachine({ seed: 5 });
+        let nav = null;
+        let end = null;
+        m.on(e => {
+            if (e.type === EVENTS.AT_GAME) nav = e.nav;
+            if (e.type === EVENTS.GAME_END) end = e;
+        });
+        m.debug.direct();
+        play(m, rng);
+        for (let i = 0; i < 30; i++) {
+            m.debug.setNextRole('bell');
+            assert.ok(m.lever());
+            assert.ok(nav && nav[0] !== 0, 'ふだんのナビは中押し・右押し');
+            const order = follow ? nav : [nav[1], nav[0], nav[2]];
+            order.forEach(reel => m.stop(reel, rng.int(0, 20)));
+            if (follow) {
+                assert.equal(end.win, 'bell');
+                assert.equal(end.payout, 15);
+            } else {
+                assert.equal(end.win, null);
+                assert.equal(end.payout, 0);
+                assert.equal(end.cols.filter(col => col[1] === 'bell').length, 2);
+            }
+            if (m.snapshot().phase !== 'at') break;
+        }
+    }
+    // 順押しナビ (特化ゾーン当選) は押し順不問
+    const m = machineWith(c => { c.at.bellTokka = 100; }, { seed: 8 });
+    const log = [];
+    m.on(e => log.push(e));
+    m.debug.direct();
+    play(m, rng);
+    m.debug.setNextRole('bell');
+    assert.ok(m.lever());
+    const atGame = log.filter(e => e.type === EVENTS.AT_GAME).pop();
+    assert.deepEqual(atGame.nav, [0, 1, 2]);
+    [2, 0, 1].forEach(reel => m.stop(reel, rng.int(0, 20)));
+    const end = log.filter(e => e.type === EVENTS.GAME_END).pop();
+    assert.equal(end.win, 'bell');
+    assert.equal(end.payout, 15);
+    assert.ok(log.some(e => e.type === EVENTS.TOKKA_STOCK), '順押しナビのゲームの終わりに特化ゾーンのストック');
+});
+
+test('AT のナビは中押し・右押しの4択。順押しナビは特化ゾーンのストックにつながる', () => {
+    const m = createMachine({ seed: 5 });
+    const rng = createRng(6);
+    const navs = [];
+    m.on(e => { if (e.type === EVENTS.AT_GAME && e.nav) navs.push(e.nav); });
+    m.debug.direct();
+    play(m, rng);
+    for (let i = 0; i < 3000 && m.snapshot().phase !== 'normal'; i++) {
+        if (m.snapshot().phase === 'at') m.debug.setNextRole('bell');
+        play(m, rng);
+    }
+    assert.ok(navs.length > 0);
+    for (const nav of navs) {
+        if (nav[0] === 0) assert.deepEqual(nav, [0, 1, 2]);
+        else assert.ok([1, 2].includes(nav[0]));
+    }
+});
+
+test('AT 突入時にステートを抽選し (低確 50%・高確 40%・超高確 10%)、AT 中も移行・転落する', () => {
+    const rng = createRng(13);
+    const states = { low: 0, high: 0, super: 0 };
+    for (let seed = 1; seed <= 300; seed++) {
+        const m = createMachine({ seed });
+        m.debug.direct();
+        play(m, rng);
+        states[m.debug.internal().state]++;
+    }
+    assert.ok(states.low > 100 && states.high > 70 && states.super > 10, JSON.stringify(states));
+    // 移行: AT 中に低確で強チェリーを引く (ボーナスに当たらなければ 100% で高確へ)
+    const m = machineWith(c => { c.at.bonusRate.low.strongCherry = 0; c.tokka.rate.low.strongCherry = 0; }, { seed: 2 });
+    m.debug.direct();
+    play(m, rng);
+    m.debug.setState('low');
+    m.debug.setNextRole('strongCherry');
+    play(m, rng);
+    assert.equal(m.debug.internal().state, 'high');
+    // 転落: 保障のあと、ハズレで低確へ (転落率 100% にして確かめる)
+    const m2 = machineWith(c => { c.stateFall.high.fall = 100; c.stateFall.high.guard = 2; }, { seed: 2 });
+    m2.debug.setGames(5);   // 0G のゾーンの前兆 (本前兆中は 50% で転落) と重ならないように
+    m2.debug.direct();
+    play(m2, rng);
+    m2.debug.setState('high');
+    for (let i = 0; i < 2; i++) { m2.debug.setNextRole('none'); play(m2, rng); }
+    assert.equal(m2.debug.internal().state, 'high', '保障中は転落しない');
+    m2.debug.setNextRole('none');
+    play(m2, rng);
+    assert.equal(m2.debug.internal().state, 'low');
+});
+
+test('AT 中のレア役はステート別の表で「ボーナス／特化ゾーン／直接上乗せ」のどれか1つに決まる', () => {
+    const rng = createRng(17);
+    const counts = { bonus: 0, tokka: 0, add: 0, miss: 0 };
+    for (let seed = 1; seed <= 400; seed++) {
+        const m = createMachine({ seed });
+        m.debug.setGames(5);   // 0G のゾーンの前兆と重ならないように
+        m.debug.direct();
+        play(m, rng);
+        m.debug.setState('super');
+        const log = [];
+        m.on(e => log.push(e.type));
+        m.debug.setNextRole('strongCherry');
+        play(m, rng);
+        const z = m.debug.internal().zencho;
+        const bonus = Boolean(z && z.real);
+        const tokka = log.includes(EVENTS.TOKKA_STOCK);
+        const add = log.includes(EVENTS.AT_ADD);
+        const miss = log.includes(EVENTS.AT_MISS);
+        assert.equal([bonus, tokka, add || miss].filter(Boolean).length, 1, `重複 ${log.join(',')}`);
+        if (bonus) counts.bonus++;
+        else if (tokka) counts.tokka++;
+        else if (add) counts.add++;
+        else counts.miss++;
+    }
+    // 超高確の強チェリーは 50%/50% なので直接上乗せは起きない
+    assert.equal(counts.add + counts.miss, 0, JSON.stringify(counts));
+    assert.ok(counts.bonus > 120 && counts.tokka > 120, JSON.stringify(counts));
+});
+
+test('特化ゾーン: ストック → 始まり → 3G ずつのセット → 終わり。上乗せは AT の残りに足され、AT のゲーム数は減らない', () => {
     for (let seed = 1; seed <= 30; seed++) {
         const m = createMachine({ seed });
         const rng = createRng(seed);
@@ -130,62 +467,134 @@ test('特化ゾーン (仮組): ストック → 始まり → 3G ずつのセ�
         assert.ok(sets.slice(0, -1).every(x => x.cont) && !sets[sets.length - 1].cont, '最後のセットだけ続かない');
         const total = games.reduce((a, g) => a + g.add, 0);
         assert.equal(log[end].total, total);
-        assert.equal(log[end].left, m.snapshot().at ? m.snapshot().at.left : log[end].left);
     }
 });
 
-test('チャンス目A はベルの小V で、中段は入賞しない', () => {
-    const rng = createRng(3);
-    for (let i = 0; i < 100; i++) {
-        const ctrl = createReelControl('chanceA');
-        [0, 1, 2].forEach(reel => ctrl.stop(reel, rng.int(0, 20)));
-        const cols = gridAt(ctrl.tops);
-        assert.equal(cols[0][0], 'bell');
-        assert.equal(cols[1][1], 'bell');
-        assert.equal(cols[2][0], 'bell');
-        assert.equal(middleWin(cols), null);
-    }
-});
-
-test('game:end の win: チェリー・スイカは役で、チャンス目はリプレイ扱い', () => {
-    for (const [role, win] of [['weakCherry', 'cherry'], ['strongSuika', 'suika'], ['chance', 'replay']]) {
-        const m = createMachine({ seed: 21 });
-        const rng = createRng(1);
-        let end = null;
-        m.on(e => { if (e.type === EVENTS.GAME_END) end = e; });
-        m.debug.setNextRole(role);
-        play(m, rng);
-        assert.equal(end.win, win, role);
-        if (role === 'chance') assert.ok(m.snapshot().free, 'チャンス目は次のゲームが無料');
-    }
-});
-
-test('AT のナビは中押し・右押しの4択。順押しナビは特化ゾーンのストックにつながる', () => {
-    const m = createMachine({ seed: 5 });
-    const rng = createRng(6);
-    const navs = [];
+test('特化ゾーン中のボーナス当選は、特化ゾーンが終わったあと前兆 (cause: stock) を走らせて当たる', () => {
+    const rng = createRng(19);
+    const m = machineWith(c => {
+        c.at.bonusRate.low.midCherry = 100;
+        c.tokka.rate.low.midCherry = 0;
+        c.tokka.contTable = { 0: 100 };
+    }, { seed: 4 });
     const log = [];
-    m.on(e => {
-        if (e.type === EVENTS.AT_GAME && e.nav) navs.push(e.nav);
-        log.push(e.type);
-    });
+    m.on(e => log.push(e));
+    m.debug.setGames(5);   // 0G のゾーンの前兆と重ならないように
     m.debug.direct();
     play(m, rng);
-    for (let i = 0; i < 3000 && m.snapshot().phase !== 'normal'; i++) {
-        if (m.snapshot().phase === 'at') m.debug.setNextRole('bell');
-        play(m, rng);
-    }
-    assert.ok(navs.length > 0);
-    for (const nav of navs) {
-        if (nav[0] === 0) assert.deepEqual(nav, [0, 1, 2]);
-        else assert.ok([1, 2].includes(nav[0]));
-    }
+    m.debug.setState('low');
+    m.debug.tokka();
+    play(m, rng);
+    // 特化ゾーンの1ゲーム目で中段チェリー (ボーナス確定)。中段チェリーは次の2セットの継続が確定
+    m.debug.setNextRole('midCherry');
+    play(m, rng);
+    assert.ok(m.debug.internal().tokka, '特化ゾーン中');
+    assert.equal(m.debug.internal().tokkaBonus.length, 1, '特化ゾーン中のボーナスは別に持つ');
+    assert.ok(!log.some(e => e.type === EVENTS.ZENCHO_START), '特化ゾーン中は前兆が走らない');
+    let guard = 0;
+    while (!log.some(e => e.type === EVENTS.TOKKA_END) && guard++ < 100) { m.debug.setNextRole('none'); play(m, rng); }
+    const endIndex = log.findIndex(e => e.type === EVENTS.TOKKA_END);
+    const zencho = log.find((e, i) => i > endIndex && e.type === EVENTS.ZENCHO_START);
+    assert.ok(zencho, '特化ゾーンの終わりで前兆');
+    assert.equal(zencho.cause, 'stock');
+    assert.equal(log.indexOf(zencho), endIndex + 1, 'tokka:end の直後に zencho:start');
+    guard = 0;
+    while (!log.some(e => e.type === EVENTS.BONUS_STANDBY) && guard++ < 100) { m.debug.setNextRole('none'); play(m, rng); }
+    const standby = log.find(e => e.type === EVENTS.BONUS_STANDBY);
+    assert.ok(standby, '前兆の終わりでボーナス');
+    assert.equal(log.find(e => e.type === EVENTS.ZENCHO_END).win, true);
+    play(m, rng);
+    assert.equal(log.find(e => e.type === EVENTS.BONUS_START).inAt, true, 'AT 中のボーナス扱い');
 });
 
-test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最後のゲームで敗北) → AT に戻る', () => {
+// ----- 疑似ボーナス -----
+
+test('ボーナス中: 押し順ベルに bonus:game の nav が付き、順押しナビは AT 当選のときだけ。当選は 狙え → こおりくん揃い', () => {
+    const rng = createRng(23);
+    let hot = 0;
+    let normal = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+        const m = createMachine({ seed });
+        const log = [];
+        m.on(e => log.push(e));
+        m.debug.bonus('big');
+        let guard = 0;
+        while (!log.some(e => e.type === EVENTS.BONUS_END) && guard++ < 100) {
+            assert.ok(m.lever());
+            const game = log.filter(e => e.type === EVENTS.BONUS_GAME).pop();
+            const nav = game && game.nav;
+            (nav || rng.pick(ORDERS)).forEach(reel => m.stop(reel, rng.int(0, 20)));
+            if (nav) {
+                const end = log[log.length - 1].type === EVENTS.GAME_END ? log[log.length - 1] : log.filter(e => e.type === EVENTS.GAME_END).pop();
+                assert.equal(end.payout, 15, 'ナビどおりなら 15枚');
+                if (nav[0] === 0) {
+                    hot++;
+                    assert.equal(end.win, 'koori', '順押しナビ = 当選 = こおりくん揃い');
+                } else normal++;
+            }
+        }
+        const nerae = log.filter(e => e.type === EVENTS.BONUS_NERAE && e.win);
+        assert.ok(nerae.length <= 1, '当選の狙えは1回');
+        if (nerae.length) {
+            const i = log.indexOf(nerae[0]);
+            const align = log.find((e, k) => k > i && e.type === EVENTS.GAME_END);
+            assert.equal(align.win, 'koori');
+            assert.equal(log.find(e => e.type === EVENTS.BONUS_END).at, true);
+        }
+    }
+    assert.ok(normal > 0 && hot > 0, `順押しナビ ${hot} ふつうのナビ ${normal}`);
+});
+
+test('ガセ「狙え」: 中押しで中リール中段がこおりくんになるのは当選のときだけ。ガセは揃わず、当選は揃う', () => {
+    const rng = createRng(29);
+    let gase = 0;
+    let real = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+        const m = machineWith(c => { c.show.neraeGase = 1 / 8; }, { seed });
+        const log = [];
+        m.on(e => log.push(e));
+        m.debug.bonus('big');
+        let guard = 0;
+        while (!log.some(e => e.type === EVENTS.BONUS_END) && guard++ < 100) {
+            assert.ok(m.lever());
+            const nerae = log[log.length - 1].type === EVENTS.BONUS_GAME && log[log.length - 2].type === EVENTS.BONUS_NERAE ? log[log.length - 2] : null;
+            // 中押し
+            [1, 0, 2].forEach(reel => m.stop(reel, rng.int(0, 20)));
+            const end = log[log.length - 1].type === EVENTS.GAME_END ? log[log.length - 1] : log.filter(e => e.type === EVENTS.GAME_END).pop();
+            if (nerae && nerae.win) {
+                real++;
+                assert.equal(end.cols[1][1], 'koori', '当選は中リール中段にこおりくん');
+                assert.equal(end.win, 'koori');
+            } else if (nerae) {
+                gase++;
+                assert.notEqual(end.cols[1][1], 'koori', 'ガセは中リール中段にこおりくんが来ない');
+                assert.notEqual(end.win, 'koori');
+                assert.equal(end.payout, 0);
+            } else {
+                assert.ok(!(end.cols[1][1] === 'koori' && end.win === 'koori'), '狙えなしで揃わない');
+            }
+        }
+    }
+    assert.ok(gase > 0 && real > 0, `ガセ ${gase} 当選 ${real}`);
+});
+
+test('ガセ「狙え」の色は青・緑・赤・金だけ (虹は当選のときだけ)', () => {
+    const rng = createRng(37);
+    const colors = { real: new Set(), gase: new Set() };
+    for (let seed = 1; seed <= 80; seed++) {
+        const m = machineWith(c => { c.show.neraeGase = 1 / 5; }, { seed });
+        m.on(e => { if (e.type === EVENTS.BONUS_NERAE) colors[e.win ? 'real' : 'gase'].add(e.color); });
+        m.debug.bonus('big');
+        for (let i = 0; i < 52 && m.snapshot().phase !== 'normal'; i++) play(m, rng);
+    }
+    assert.ok(!colors.gase.has('rainbow'));
+    assert.ok(colors.gase.size >= 3 && colors.real.size >= 3, `${[...colors.gase]} / ${[...colors.real]}`);
+});
+
+test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最後のゲームで敗北) → AT に戻る。相手は当たるボーナスかで選ぶ', () => {
     let wins = 0;
     let loses = 0;
-    for (let seed = 1; seed <= 20; seed++) {
+    for (let seed = 1; seed <= 30; seed++) {
         const m = createMachine({ seed });
         const rng = createRng(seed);
         const log = [];
@@ -193,6 +602,8 @@ test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最�
         m.debug.direct();
         play(m, rng);
         m.debug.atBonus('big');
+        play(m, rng);   // 図柄をそろえるゲーム
+        const willWin = m.debug.internal().bonus.willWin;
         let guard = 0;
         while (!log.some(e => e.type === EVENTS.BONUS_END) && guard++ < 200) play(m, rng);
         const start = log.find(e => e.type === EVENTS.BONUS_START);
@@ -202,19 +613,54 @@ test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最�
         const last = boss[boss.length - 1];
         assert.equal(boss.length, 2);
         assert.ok(boss.every(b => b.boss === boss[0].boss), '相手は同じ');
+        assert.equal(last.win, willWin, '開始時に決めた当落と一致');
         if (last.win) {
             wins++;
             const i = log.indexOf(last);
-            const nerae = log.findIndex(e => e.type === EVENTS.BONUS_NERAE);
+            const nerae = log.findIndex(e => e.type === EVENTS.BONUS_NERAE && e.win);
             const align = log.findIndex((e, k) => k > nerae && e.type === EVENTS.GAME_END);
             assert.ok(nerae < align && align < i, '狙え → 揃い → 勝利の順');
             assert.equal(log[align].win, 'koori');
+            assert.ok(log.some(e => e.type === EVENTS.TOKKA_START), '勝ったら特化ゾーン');
         } else loses++;
         const end = log.find(e => e.type === EVENTS.BONUS_END);
         assert.equal(end.at, false);
         assert.ok(['at', 'standby'].includes(m.snapshot().phase) || log.some(e => e.type === EVENTS.AT_END));
     }
     assert.ok(wins > 0 && loses > 0, `勝ち ${wins} 負け ${loses}`);
+});
+
+test('AT 中のエピソードBIG は入賞した時点で特化ゾーン確定 (at:boss は最初のゲームに final: true, win: true)', () => {
+    const m = createMachine({ seed: 14 });
+    const rng = createRng(14);
+    const log = [];
+    m.on(e => log.push(e));
+    m.debug.direct();
+    play(m, rng);
+    m.debug.atBonus('epbig');
+    play(m, rng);
+    play(m, rng);
+    const boss = log.filter(e => e.type === EVENTS.AT_BOSS);
+    assert.equal(boss.length, 1);
+    assert.deepEqual([boss[0].final, boss[0].win], [true, true]);
+    let guard = 0;
+    while (!log.some(e => e.type === EVENTS.BONUS_END) && guard++ < 100) play(m, rng);
+    assert.ok(!log.some(e => e.type === EVENTS.BONUS_NERAE), 'エピソードBIG は狙えを出さない');
+    assert.ok(log.some(e => e.type === EVENTS.TOKKA_START), 'ボーナスのあと特化ゾーン');
+});
+
+test('デバッグで役を差しかえたボーナスのゲームは、その分だけ当落を抽選し直す (中段チェリーは 100%)', () => {
+    const m = createMachine({ seed: 15 });
+    const rng = createRng(15);
+    const log = [];
+    m.on(e => log.push(e));
+    m.debug.bonus('reg');
+    play(m, rng);
+    m.debug.setNextRole('midCherry');
+    play(m, rng);
+    const nerae = log.find(e => e.type === EVENTS.BONUS_NERAE);
+    assert.ok(nerae && nerae.win, '中段チェリーで狙え');
+    assert.equal(log.filter(e => e.type === EVENTS.GAME_END).pop().win, 'koori');
 });
 
 test('前兆の途中で AT のゲーム数がなくなると、ラストジャッジで当落を告知する', () => {
