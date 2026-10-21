@@ -45,7 +45,7 @@ export const CONFIG = {
         C: { C: 50, D: 5, heaven: 40, superHeaven: 5 },
         D: { heaven: 50, superHeaven: 50 },
         heaven: { A: 20, B: 20, C: 5, D: 5, heaven: 49, superHeaven: 1 },
-        superHeaven: { heaven: 20, superHeaven: 80 }
+        superHeaven: { A: 20, superHeaven: 80 }   // 2026-10-21 変更: 超天国からの転落 20% (A へ)、天国への移行なし (旧: 天国 20・超天国 80)
     },
     initialMode: { A: 50, heaven: 50 },
     // ボーナスの振り分け (仕様書・決定)
