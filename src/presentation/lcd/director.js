@@ -17,6 +17,7 @@ import { BOSS_MS, END_MS, ENTRY_MS, KAKUTEI_MS, drawAtKakutei, drawBonusEnd, dra
 import { BIG_CARDS, EPISODES, REG_CARDS } from './bonusStory.js';
 import { FINISHERS, LINES, SPECIALS } from './battleLines.js';
 import { CUTIN_MS, TALK_MS, drawSpecialCutin, drawTalk } from './special.js';
+import { chanceCutin, neraeCutin } from './cutinCast.js';
 import {
     INTRO_MS, OPEN_STEP_MS, RESULT_MS, STOCK_MS, TOKKA_END_MS, drawTokka, drawTokkaEnd, drawTokkaIntro, drawTokkaSelect, drawTokkaStock
 } from './tokka.js';
@@ -32,6 +33,8 @@ const SELECT_MS = 10000;       // 特化ゾーンのパターンを選ぶ時間 
 const JUDGE_WAIT_MS = 4000;    // ラストジャッジで PUSH を待つ時間 (押さなくても進む)
 const JUDGE_RESULT_MS = 2400;  // ラストジャッジの結果を見せる時間
 
+const LEAVE_MS = 200;          // 前のカットインが右へはけて消えるまで
+const CUTIN_KINDS = ['cutin', 'heaven'];   // 重ねるカットイン (必殺技のカットインは v.spCut)
 // 特化ゾーンのパターンは、前に選んだほうを最初に選んでおく (このブラウザに覚えておく)
 function savedPattern() {
     try { return localStorage.getItem('koori-slot-tokka') === 'daichoen' ? 'daichoen' : 'maou'; } catch (e) { return 'maou'; }
@@ -119,9 +122,27 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         changed();
     }
 
+    // ----- カットインの入れかわり (2026-10-21 ユーザー指定) -----
+    // 新しいカットインを出すとき、前のカットインが残っていたら、右へすばやくはけさせて消す
+    function clearCutins() {
+        v.overlays = v.overlays.filter(o => !(CUTIN_KINDS.includes(o.kind) && o.since > now));   // まだ出ていないものはやめる
+        v.overlays.forEach(o => {
+            if (!CUTIN_KINDS.includes(o.kind) || o.leaveAt) return;
+            o.leaveAt = now;
+            o.until = Math.min(o.until, now + LEAVE_MS);
+        });
+        if (v.spCut && !v.spCut.leaveAt) v.spCut.leaveAt = now;
+    }
+    function cutinOverlay(kind, dur, data) {
+        clearCutins();
+        overlay(kind, dur, data);
+    }
+
     // ----- 必殺技のカットインと敵のセリフ (前作のスロットと同じ見せ方。画面設計書 11章) -----
     // カットインを出しきってから then。side: 'ally' (こおりくんたち) / 'enemy'
     function specialCut(who, side, name, then) {
+        clearCutins();
+        if (v.spCut) v.spCutOld = { ...v.spCut, leaveAt: v.spCut.leaveAt || now };
         v.spCut = { who, name: name || SPECIALS[who] || '必殺技', side, since: now };
         sound.play('cutin');
         after(250, () => sound.play(side === 'enemy' ? 'clash' : 'flashBig'));
@@ -340,7 +361,9 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                 setButton(e.pitch === 'high' ? 'rainbow' : 'red');
                 after(900, () => { if (!v.direct) setButton('white', { lit: false }); });
             } else if (e.kind === 'cutin') {
-                overlay('cutin', 1800, { color: e.color });
+                // キャラは色ごとの顔ぶれから選ぶ (期待度は色だけ。lcd/cutinCast.js)
+                const c = chanceCutin(e.color);
+                cutinOverlay('cutin', 1800, { color: e.color, who: c.who, line: c.line });
                 sound.play('cutin');
                 if (e.color === 'gold' || e.color === 'rainbow') setButton(e.color, { pop: e.color === 'rainbow' });
             } else if (e.kind === 'flash') {
@@ -483,7 +506,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         },
 
         [E.HEAVEN](e) {
-            overlay('heaven', 1900, { who: e.who });
+            cutinOverlay('heaven', 1900, { who: e.who });
             sound.play('cutin');
         },
 
@@ -534,7 +557,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         // 「こおりを狙え」カットイン。色は内部処理が抽選する (成功率は未定)。win は見せ方には使わず、リールの出目で判定する
         [E.BONUS_NERAE](e) {
             v.nerae = { color: e.color, win: e.win, stops: [null, null, null], order: [], pending: [], phase: 'aim', endAt: 0 };
-            overlay('cutin', 1300, { color: e.color, line: 'こおりを狙え！' });   // 停止ボタンを押す前に抜ける長さ
+            cutinOverlay('cutin', 1300, { color: e.color, who: neraeCutin(), line: 'こおりを狙え！' });   // 停止ボタンを押す前に抜ける長さ
             sound.play('cutin');
             if (e.color === 'gold' || e.color === 'rainbow') setButton(e.color, { pop: e.color === 'rainbow' });
         },
@@ -805,6 +828,14 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         sound.bgm(bgmFor());
     }
 
+    // はけていくカットイン: 右へずらしながら薄くする (o.leaveAt から LEAVE_MS で消える)
+    function leaving(ctx, t, o) {
+        if (!o.leaveAt) return;
+        const k = Math.min(1, (t - o.leaveAt) / LEAVE_MS);
+        ctx.translate(k * k * W, 0);
+        ctx.globalAlpha *= 1 - k;
+    }
+
     function draw(ctx, t) {
         update(t);
         ctx.save();
@@ -840,10 +871,13 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         v.overlays.slice().sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind)).forEach(o => {
             const since = t - o.since;
             if (since < 0) return;
+            ctx.save();
+            leaving(ctx, t, o);
             if (o.kind === 'elevator') drawElevator(ctx, since, o.from, o.to);
-            else if (o.kind === 'cutin') drawCutin(ctx, since, o.color, 'koori', o.line);
+            else if (o.kind === 'cutin') drawCutin(ctx, since, o.color, o.who || 'koori', o.line);
             else if (o.kind === 'heaven') drawHeaven(ctx, since, o.who);
             else if (o.kind === 'flash') drawFlash(ctx, since, o.level);
+            ctx.restore();
         });
         // 「こおりを狙え」はカットインが抜けてから
         if (v.nerae && !v.overlays.some(o => o.kind === 'cutin')) drawNerae(ctx, t, v.nerae);
@@ -853,7 +887,21 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         if (v.tokkaFx) drawTokkaStock(ctx, t, t - v.tokkaFx.since, v.tokkaFx.stock);
         if (v.bossFx) drawBossFx(ctx, t, v.bossFx);
         if (v.judge) drawAtJudge(ctx, t, v.judge);
-        if (v.spCut) drawSpecialCutin(ctx, t, t - v.spCut.since, v.spCut);
+        if (v.spCutOld) {
+            if (t - v.spCutOld.leaveAt > LEAVE_MS) v.spCutOld = null;
+            else {
+                ctx.save();
+                leaving(ctx, t, v.spCutOld);
+                drawSpecialCutin(ctx, t, Math.min(t - v.spCutOld.since, CUTIN_MS - 200), v.spCutOld);
+                ctx.restore();
+            }
+        }
+        if (v.spCut) {
+            ctx.save();
+            leaving(ctx, t, v.spCut);
+            if (!(v.spCut.leaveAt && t - v.spCut.leaveAt > LEAVE_MS)) drawSpecialCutin(ctx, t, t - v.spCut.since, v.spCut);
+            ctx.restore();
+        }
         if (v.talk && !v.spCut && t - v.talk.since < TALK_MS) drawTalk(ctx, t, t - v.talk.since, v.talk);
         if (v.atEnd) drawAtEnd(ctx, t, t - v.atEnd.since, v.atEnd);
         if (v.tenjo) drawTenjo(ctx, t, t - v.tenjo.since, v.tenjo.who);

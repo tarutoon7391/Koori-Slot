@@ -224,8 +224,10 @@ export function drawCutin(ctx, since, color, who = 'koori', line = null) {
     ctx.save();
     ctx.translate((1 - k) * -W, 0);
     rect(ctx, (1 - k) * W, 0, W, H, `rgba(0,0,0,${0.4 * k})`);
-    cutin(ctx, 46, 84, cutinFill(ctx, color), who, '', { scale: who === 'koori' ? 4 : ART[who].h > 45 ? 2.2 : 2.6 });
-    text(ctx, line || CUTIN_LINES[color], 206, 88, { size: 18, color: '#ffffff', lw: 5, stroke: '#1a0a0a' });
+    // キャラの大きさは背の高さでそろえる (こおりくん・ふるカワ・ともいしは小さい絵なので大きめに)
+    cutin(ctx, 46, 84, cutinFill(ctx, color), who, '', { scale: Math.min(4, 90 / ART[who].h) });
+    const s = line || CUTIN_LINES[color];
+    text(ctx, s, 206, 88, { size: [...s].length > 10 ? 14 : 18, color: '#ffffff', lw: 5, stroke: '#1a0a0a' });
     ctx.restore();
 }
 
