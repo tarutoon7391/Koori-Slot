@@ -12,6 +12,7 @@ import { ACHIEVEMENTS, SPECIALS, TROPHIES, UNLOCK_HINT } from '../collection/col
 import { PROFILES } from '../collection/profiles.js';
 import { EPISODES } from '../lcd/bonusStory.js';
 import { HINTS, drawTrophy } from '../lcd/at.js';
+import { SPECIALS as SPECIAL_NAMES } from '../lcd/battleLines.js';
 
 const TABS = [
     ['chars', 'キャラクター'],
@@ -138,7 +139,10 @@ export default function Zukan({ collection, onClose }) {
                 </>
             );
     } else if (tab === 'specials') {
+        const cut = d.cutins || {};
         body = (
+            <>
+            <p className="zk-lead">AT の上乗せの技</p>
             <div className="zk-list">
                 {SPECIALS.map(sp => {
                     const n = d.specials[sp.id] || 0;
@@ -151,6 +155,20 @@ export default function Zukan({ collection, onClose }) {
                     );
                 })}
             </div>
+            <p className="zk-lead zk-gap">必殺技のカットイン（とどめの必殺技・敵の必殺技） {Object.keys(cut).length} / {Object.keys(SPECIAL_NAMES).length}</p>
+            <div className="zk-list">
+                {Object.entries(SPECIAL_NAMES).map(([who, name]) => {
+                    const n = cut[who] || 0;
+                    return (
+                        <div key={who} className={n ? 'zk-row' : 'zk-row locked'}>
+                            <ArtCanvas ids={who} w={40} h={40} silhouette={!n} />
+                            <span className="zk-name">{n ? name : '？？？'}<small>{n ? CHARACTERS.find(c => c.id === who).name : ''}</small></span>
+                            <span className="zk-count">{n ? `${n}回` : '-'}</span>
+                        </div>
+                    );
+                })}
+            </div>
+            </>
         );
     } else if (tab === 'episodes') {
         body = (

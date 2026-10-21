@@ -15,6 +15,8 @@ import {
 } from './scenes.js';
 import { BOSS_MS, END_MS, ENTRY_MS, KAKUTEI_MS, drawAtKakutei, drawBonusEnd, drawBonusScreen, drawBossFx, drawNerae } from './bonus.js';
 import { BIG_CARDS, EPISODES, REG_CARDS } from './bonusStory.js';
+import { FINISHERS, LINES, SPECIALS } from './battleLines.js';
+import { CUTIN_MS, TALK_MS, drawSpecialCutin, drawTalk } from './special.js';
 import {
     INTRO_MS, OPEN_STEP_MS, RESULT_MS, STOCK_MS, TOKKA_END_MS, drawTokka, drawTokkaEnd, drawTokkaIntro, drawTokkaSelect, drawTokkaStock
 } from './tokka.js';
@@ -62,7 +64,8 @@ function naviLine(stage) {
 const pick = list => list[Math.floor(Math.random() * list.length)];
 
 // onEpisode(n): エピソードBIG の第 n 話 (0 から) を見せはじめた (図鑑に数える)
-export function createDirector({ sound, reels, onChange = () => {}, onEpisode = () => {} }) {
+// onSpecial(who): who の必殺技のカットインを見せた (図鑑に数える)
+export function createDirector({ sound, reels, onChange = () => {}, onEpisode = () => {}, onSpecial = () => {} }) {
     const v = {
         phase: 'normal',
         stage: { place: 'floor', floor: 1, state: 'low' },
@@ -85,6 +88,8 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         bossFx: null,      // AT 中のボーナスの相手の登場・勝利・敗北: { kind, boss, since }
         judge: null,       // AT 0G の当落告知 (ラストジャッジ): { team, win, bonus, phase, since }
         at: null,
+        spCut: null,       // 必殺技のカットイン: { who, name, side, since }
+        talk: null,        // 敵のセリフの吹き出し: { who, line, since }
         direct: null,
         tenjo: null,
         navi: null,
@@ -96,7 +101,10 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         lastPayout: 0
     };
     const queue = [];
-    let hold = null;      // { reels } | { until, then } | { push: 'battle' | 'attack' | 'select' | 'judge', timeout }
+    let hold = null;      // { until, then } | { push: 'battle' | 'attack' | 'select' | 'judge', timeout }
+    // 最後のリールが止まりきるまで、そのゲームの結果を見せない。hold とは別に持つ
+    // (レバーのときに始まった演出の時間待ち (四天王の登場など) を、リールの待ちで上書きして消さないように)
+    let reelHold = false;
     let pressing = false; // PUSH ボタンを押しているあいだ (コオリハンマーの長押し)
     let now = performance.now();
     const timers = [];
@@ -110,6 +118,32 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         v.button = { color, lit, pop };
         changed();
     }
+
+    // ----- 必殺技のカットインと敵のセリフ (前作のスロットと同じ見せ方。画面設計書 11章) -----
+    // カットインを出しきってから then。side: 'ally' (こおりくんたち) / 'enemy'
+    function specialCut(who, side, name, then) {
+        v.spCut = { who, name: name || SPECIALS[who] || '必殺技', side, since: now };
+        sound.play('cutin');
+        after(250, () => sound.play(side === 'enemy' ? 'clash' : 'flashBig'));
+        onSpecial(who);
+        wait(CUTIN_MS, () => {
+            v.spCut = null;
+            if (then) then();
+        });
+    }
+    // 敵のセリフ (kind: 'intro' 戦う前 / 'special' 必殺技の前 / 'win' 敵が勝った / 'lose' 敵が負けた)
+    function talk(who, kind, delay = 0) {
+        const line = LINES[who] && LINES[who][kind];
+        if (!line) return;
+        after(delay, () => { v.talk = { who, line, since: now }; });
+    }
+    // 敵の必殺技: セリフを言ってからカットイン
+    function enemySpecial(who, then) {
+        talk(who, 'special');
+        wait(900, () => specialCut(who, 'enemy', null, then));
+    }
+    // 前兆・ラストジャッジの相手 (最後に戦うのはチームの3人目。scenes.js の drawBattle と同じ)
+    const rivalOf = team => (TEAMS[team] || TEAMS.fiveDX).members[2];
 
     // ----- 「こおりを狙え」(画面設計書 4-3) -----
     // 押し順で確定がわかるタイミングが変わる (仕様書): 中押しは中リールにこおりくんが止まった時点 (1確)、
@@ -159,6 +193,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         pressing = false;
         v.attack = { attacker: e.attacker, enemy: e.enemy, games: e.games || 0, left: e.left, miss: Boolean(e.miss), phase: 'appear', since: now, gauge: 0, pushes: 0 };
         sound.play('cutin');
+        talk(e.enemy, 'intro', 80);
         wait(ATTACK_MS.appear, () => {
             if (!atk.weapon || e.miss) return hitAttack();
             v.attack.phase = 'push';
@@ -184,6 +219,13 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
     function hitAttack() {
         const a = v.attack;
         hold = null;
+        // とどめの必殺技のカットイン (仲間・おにおにはその技、こおりくんは武器の名前)。ミスのときは出さない
+        if (!a.miss && !a.cutDone) {
+            a.cutDone = true;
+            const atk = ATTACKS[a.attacker] || ATTACKS.yasu;
+            specialCut(atk.who, 'ally', atk.weapon ? atk.name : SPECIALS[atk.who], () => hitAttack());
+            return;
+        }
         a.phase = 'hit';
         a.since = now;
         // ミス (at:miss): 相手がよけて、上乗せなし
@@ -193,6 +235,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                 a.phase = 'result';
                 a.since = now;
                 sound.play('lose');
+                talk(a.enemy, 'win');
                 wait(ATTACK_MS.result - 500, () => { v.attack = null; });
             });
             return;
@@ -204,6 +247,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             a.since = now;
             // 上乗せ音は大きさで3段階 (画面設計書 7-2)
             sound.play(a.games >= 100 ? 'addBig' : a.games >= 50 ? 'addMid' : 'addSmall');
+            talk(a.enemy, 'lose', 200);
             if (v.at) {
                 v.at.left = a.left;
                 v.at.adds++;
@@ -393,11 +437,13 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             if (v.phase === 'at') {
                 v.zencho = { team: e.team, cause: e.cause, since: now };
                 sound.play('cutin');
+                talk(rivalOf(e.team), 'intro', 900);
                 return;
             }
             v.zencho = { team: e.team, cause: e.cause, since: now + 1300 };
             overlay('elevator', 1300, { from: v.stage.floor, to: null });
             sound.play('elevator');
+            talk(rivalOf(e.team), 'intro', 2300);
         },
 
         [E.ZENCHO_BATTLE](e) {
@@ -546,21 +592,32 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         },
 
         // AT 中のボーナスの相手 (画面設計書 5-3): 登場 (final: false) / 勝利 (こおりくんが揃ったあと) / 敗北 (最後のゲーム)
+        // 勝ちはこおりくんのとどめの必殺技のカットインのあと、負けは相手の必殺技のカットインのあとに結果
         [E.AT_BOSS](e) {
             if (v.bonus) v.bonus.boss = e.boss;
             const kind = !e.final ? 'intro' : e.win ? 'win' : 'lose';
-            v.bossFx = { kind, boss: e.boss, since: now };
-            if (kind === 'intro') sound.play('cutin');
-            else sound.play(e.win ? 'win' : 'lose');
-            if (kind === 'win') {
-                if (v.bonus) v.bonus.tokka = true;
-                after(500, () => sound.say && sound.say('特化ゾーン確定！'));
-                setButton('rainbow', { pop: true });
-            }
-            wait(BOSS_MS[kind], () => {
-                v.bossFx = null;
-                setButton('white', { lit: false });
-            });
+            const show = () => {
+                v.bossFx = { kind, boss: e.boss, since: now };
+                if (kind === 'intro') {
+                    sound.play('cutin');
+                    talk(e.boss, 'intro', 800);
+                } else {
+                    sound.play(e.win ? 'win' : 'lose');
+                    talk(e.boss, e.win ? 'lose' : 'win', 400);
+                }
+                if (kind === 'win') {
+                    if (v.bonus) v.bonus.tokka = true;
+                    after(500, () => sound.say && sound.say('特化ゾーン確定！'));
+                    setButton('rainbow', { pop: true });
+                }
+                wait(BOSS_MS[kind], () => {
+                    v.bossFx = null;
+                    setButton('white', { lit: false });
+                });
+            };
+            if (kind === 'win') specialCut('koori', 'ally', (e.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name, show);
+            else if (kind === 'lose') enemySpecial(e.boss, show);
+            else show();
         },
 
         // AT 0G の当落告知「ラストジャッジ」(画面設計書 5-4): PUSH (押さなくても進む) で結果
@@ -656,7 +713,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
     }
 
     function pump() {
-        while (!hold && queue.length) handle(queue.shift());
+        while (!hold && !reelHold && queue.length) handle(queue.shift());
         changed();
     }
 
@@ -664,25 +721,38 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
     function revealJudge() {
         const j = v.judge;
         hold = null;
-        j.phase = 'result';
-        j.since = now;
-        sound.play(j.win ? 'win' : 'lose');
-        setButton(j.win ? 'rainbow' : 'white', { lit: j.win, pop: j.win });
-        wait(JUDGE_RESULT_MS, () => {
-            v.judge = null;
-            setButton('white', { lit: false });
-        });
+        const foe = rivalOf(j.team);
+        const show = () => {
+            j.phase = 'result';
+            j.since = now;
+            sound.play(j.win ? 'win' : 'lose');
+            talk(foe, j.win ? 'lose' : 'win', 400);
+            setButton(j.win ? 'rainbow' : 'white', { lit: j.win, pop: j.win });
+            wait(JUDGE_RESULT_MS, () => {
+                v.judge = null;
+                setButton('white', { lit: false });
+            });
+        };
+        if (j.win) specialCut('koori', 'ally', FINISHERS.default.name, show);
+        else enemySpecial(foe, show);
     }
 
     // 前兆の最後のバトルの結果を見せる
+    // 勝ちはこおりくんのとどめの必殺技、負けは相手の必殺技のカットインのあとに結果
     function revealBattle() {
         const b = v.battle;
         hold = null;
-        b.phase = 'result';
-        b.resultAt = now;
-        sound.play(b.win ? 'win' : 'lose');
-        setButton(b.win ? 'rainbow' : 'white', { lit: b.win });
-        wait(b.win ? 1800 : 1600);
+        const foe = rivalOf(v.zencho ? v.zencho.team : 'fiveDX');
+        const show = () => {
+            b.phase = 'result';
+            b.resultAt = now;
+            sound.play(b.win ? 'win' : 'lose');
+            talk(foe, b.win ? 'lose' : 'win', 300);
+            setButton(b.win ? 'rainbow' : 'white', { lit: b.win });
+            wait(b.win ? 1800 : 1600);
+        };
+        if (b.win) specialCut('koori', 'ally', FINISHERS.default.name, show);
+        else enemySpecial(foe, show);
     }
 
     function bgmFor() {
@@ -729,7 +799,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         if (v.attack) v.attack.lastTick = t;
         if (v.atCount && t - v.atCount.since > COUNT_MS) v.atCount = null;
         flushNerae();
-        if (!hold && queue.length) pump();
+        if (!hold && !reelHold && queue.length) pump();
         v.overlays = v.overlays.filter(o => o.until > t);
         if (v.navi && v.navi.until < t) v.navi = null;
         sound.bgm(bgmFor());
@@ -783,6 +853,8 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         if (v.tokkaFx) drawTokkaStock(ctx, t, t - v.tokkaFx.since, v.tokkaFx.stock);
         if (v.bossFx) drawBossFx(ctx, t, v.bossFx);
         if (v.judge) drawAtJudge(ctx, t, v.judge);
+        if (v.spCut) drawSpecialCutin(ctx, t, t - v.spCut.since, v.spCut);
+        if (v.talk && !v.spCut && t - v.talk.since < TALK_MS) drawTalk(ctx, t, t - v.talk.since, v.talk);
         if (v.atEnd) drawAtEnd(ctx, t, t - v.atEnd.since, v.atEnd);
         if (v.tenjo) drawTenjo(ctx, t, t - v.tenjo.since, v.tenjo.who);
         if (v.direct) drawDirect(ctx, t, t - v.direct.since, v.direct.phase);
@@ -801,16 +873,16 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         // 内部処理のイベントを受け取る
         receive(e) {
             queue.push(e);
-            if (!hold) pump();
+            if (!hold && !reelHold) pump();
         },
         // 最後のリールを止める前に呼ぶ (止まりきるまで、そのゲームの結果を見せない)
         holdForReels() {
-            hold = { reels: true };
+            reelHold = true;
         },
         reelsSettled() {
-            if (hold && hold.reels) {
-                hold = null;
-                pump();
+            if (reelHold) {
+                reelHold = false;
+                if (!hold) pump();
             }
         },
         // PUSH ボタン
@@ -850,7 +922,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         release() {
             pressing = false;
         },
-        busy: () => Boolean(hold) || queue.length > 0,
+        busy: () => Boolean(hold) || reelHold || queue.length > 0,
         draw,
         snapshot,
         view: v

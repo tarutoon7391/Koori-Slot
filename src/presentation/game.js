@@ -21,7 +21,7 @@ export function createGame({ setting = 1 } = {}) {
     const notify = () => listeners.forEach(fn => fn());
     // 図鑑・実績・記録 (イベントから数えて、このブラウザに保存する。ゲームの終わりごとに保存)
     const collection = createCollection();
-    const director = createDirector({ sound: Sound, reels, onChange: notify, onEpisode: n => collection.recordEpisode(n) });
+    const director = createDirector({ sound: Sound, reels, onChange: notify, onEpisode: n => collection.recordEpisode(n), onSpecial: who => collection.recordCutin(who) });
     machine.on(e => director.receive(e));
     machine.on(e => {
         collection.record(e);

@@ -9,6 +9,7 @@
 import { CHARACTERS } from '../art/characters.js';
 import { EPISODES } from '../lcd/bonusStory.js';
 import { HINTS } from '../lcd/at.js';
+import { SPECIALS as SPECIAL_NAMES } from '../lcd/battleLines.js';
 
 const KEY = 'koori-slot-zukan';
 
@@ -73,12 +74,15 @@ export const ACHIEVEMENTS = [
     { id: 'allTrophies', name: 'トロフィーコレクター', desc: 'トロフィーを全色出す', stat: 'trophyKinds', value: 'all' },
     { id: 'allHints', name: '思い出アルバム', desc: 'AT 終了画面の絵をすべて見る', stat: 'hintKinds', value: 'all' },
     { id: 'allSpecials', name: '技マスター', desc: 'すべての技を見る', stat: 'specialKinds', value: 'all' },
+    { id: 'cutins10', name: '必殺技コレクター', desc: '必殺技のカットインを10種類見る', stat: 'cutinKinds', value: 10 },
+    { id: 'allCutins', name: '必殺技マスター', desc: 'すべての必殺技のカットインを見る（敵の技も）', stat: 'cutinKinds', value: 'all' },
+    { id: 'maouSpecial', name: '亜祖宇激烈破', desc: '大魔王ASO の必殺技を受ける', stat: 'cutin:maou', value: 1 },
     { id: 'allCharacters', name: 'キャラクター図鑑コンプリート', desc: 'すべてのキャラクターの説明を見られるようにする', stat: 'characterKinds', value: 'all' },
     { id: 'games10000', name: '打ち込み1万G', desc: '合計10,000ゲーム回す', stat: 'count:games', value: 10000 }
 ];
 
 function empty() {
-    return { met: {}, defeats: {}, specials: {}, episodes: {}, trophies: {}, hints: {}, counts: {}, best: {}, achievements: {} };
+    return { met: {}, defeats: {}, specials: {}, cutins: {}, episodes: {}, trophies: {}, hints: {}, counts: {}, best: {}, achievements: {} };
 }
 
 function load() {
@@ -111,6 +115,8 @@ export function createCollection({ storage = true } = {}) {
         if (kind === 'best') return data.best[id] || 0;
         if (kind === 'defeat') return data.defeats[id] || 0;
         if (kind === 'trophy') return data.trophies[id] || 0;
+        if (kind === 'cutin') return data.cutins[id] || 0;
+        if (kind === 'cutinKinds') return Object.keys(data.cutins).length;
         if (kind === 'episodeKinds') return Object.keys(data.episodes).length;
         if (kind === 'trophyKinds') return Object.keys(data.trophies).length;
         if (kind === 'hintKinds') return Object.keys(data.hints).length;
@@ -125,6 +131,7 @@ export function createCollection({ storage = true } = {}) {
         trophyKinds: TROPHIES.length,
         hintKinds: Object.keys(HINTS).length,
         specialKinds: SPECIALS.length,
+        cutinKinds: Object.keys(SPECIAL_NAMES).length,
         characterKinds: CHARACTERS.length
     };
     const goal = a => (a.value === 'all' ? ALL[a.stat] : a.value);
@@ -198,6 +205,12 @@ export function createCollection({ storage = true } = {}) {
         changed();
     }
 
+    // 見た必殺技のカットイン (who: キャラの id。進行役から知らせてもらう)
+    function recordCutin(who) {
+        inc(data.cutins, who);
+        changed();
+    }
+
     // 見たエピソードBIG の話 (どの話を見せるかは演出側が決めるので、進行役から知らせてもらう)
     function recordEpisode(n) {
         inc(data.episodes, n);
@@ -207,6 +220,7 @@ export function createCollection({ storage = true } = {}) {
     return {
         record,
         recordEpisode,
+        recordCutin,
         save,
         isUnlocked,
         stat,
