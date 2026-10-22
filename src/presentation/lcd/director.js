@@ -18,6 +18,7 @@ import { BIG_CARDS, EPISODES, REG_CARDS } from './bonusStory.js';
 import { FINISHERS, LINES, SPECIALS } from './battleLines.js';
 import { CUTIN_MS, TALK_MS, drawSpecialCutin, drawTalk } from './special.js';
 import { chanceCutin, neraeCutin } from './cutinCast.js';
+import { SKILL_KIND, SKILL_MS } from './skillFx.js';
 import {
     INTRO_MS, OPEN_STEP_MS, RESULT_MS, STOCK_MS, TOKKA_END_MS, drawTokka, drawTokkaEnd, drawTokkaIntro, drawTokkaSelect, drawTokkaStock
 } from './tokka.js';
@@ -716,8 +717,14 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                     setButton('white', { lit: false });
                 });
             };
-            if (kind === 'win') specialCut('koori', 'ally', (e.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name, show);
-            else if (kind === 'lose') enemySpecial(e.boss, show);
+            // カットイン → 技を出し合う (fight) → 結果
+            const fight = () => {
+                v.bossFx = { kind: 'fight', boss: e.boss, win: e.win, skill: e.win ? 'rainbowSword' : SKILL_KIND[e.boss], since: now };
+                after(SKILL_MS * 0.55, () => sound.play('clash'));
+                wait(SKILL_MS, show);
+            };
+            if (kind === 'win') specialCut('koori', 'ally', (e.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name, fight);
+            else if (kind === 'lose') enemySpecial(e.boss, fight);
             else show();
         },
 
@@ -847,8 +854,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                 setButton('white', { lit: false });
             });
         };
-        if (j.win) specialCut('koori', 'ally', FINISHERS.default.name, show);
-        else enemySpecial(foe, show);
+        const skill = () => {
+            j.phase = 'skill';
+            j.since = now;
+            j.skill = SKILL_KIND[j.win ? 'koori' : foe];
+            after(SKILL_MS * 0.55, () => sound.play('clash'));
+            wait(SKILL_MS, show);
+        };
+        if (j.win) specialCut('koori', 'ally', FINISHERS.default.name, skill);
+        else enemySpecial(foe, skill);
     }
 
     // 前兆の最後のバトルの結果を見せる
@@ -865,8 +879,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             setButton(b.win ? 'rainbow' : 'white', { lit: b.win });
             wait(b.win ? 1800 : 1600);
         };
-        if (b.win) specialCut('koori', 'ally', FINISHERS.default.name, show);
-        else enemySpecial(foe, show);
+        // カットイン → 技を出す (当たるところを見せる) → 結果
+        const skill = () => {
+            b.phase = 'skill';
+            b.skill = { kind: SKILL_KIND[b.win ? 'koori' : foe], win: b.win, since: now };
+            after(SKILL_MS * 0.55, () => sound.play('clash'));
+            wait(SKILL_MS, show);
+        };
+        if (b.win) specialCut('koori', 'ally', FINISHERS.default.name, skill);
+        else enemySpecial(foe, skill);
     }
 
     function bgmFor() {

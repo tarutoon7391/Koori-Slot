@@ -10,6 +10,7 @@ import { ART } from '../art/characters.js';
 import { drawSymbol } from '../art/symbols.js';
 import { BODY, H, RAINBOW, W, ch, rainbow, rays, rect, room, roundRect, seeded, text, tower, vgrad, weapon } from './kit.js';
 import { BIG_CARDS, EPISODES, REG_CARDS } from './bonusStory.js';
+import { drawSkillFx, hitShake } from './skillFx.js';
 
 export const BONUS_NAME = { big: 'BIG BONUS', reg: 'REGULAR BONUS', epbig: 'EPISODE BIG' };
 export const BONUS_SHORT = { big: 'BIG', reg: 'REG', epbig: 'エピソードBIG' };
@@ -872,8 +873,8 @@ function drawBossBadge(ctx, t, boss) {
     text(ctx, '★'.repeat(b.stars), x + 54, y + 22, { size: 7, color: b.stars === 5 ? '#ff6a3a' : '#ffd23a', stroke: null, font: BODY });
 }
 
-// 登場: 相手が現れて「○○ 出現！」/ 勝利: 撃破して「特化ゾーン確定」/ 敗北: 「撃破ならず…」
-// fx: { kind: 'intro' | 'win' | 'lose', boss, since }
+// 登場: 相手が現れて「○○ 出現！」/ 戦闘: 技を出し合う / 勝利: 撃破して「特化ゾーン確定」/ 敗北: 「撃破ならず…」
+// fx: { kind: 'intro' | 'fight' | 'win' | 'lose', boss, since, skill, win }  fight の skill は技の見た目 (lcd/skillFx.js)
 export function drawBossFx(ctx, t, fx) {
     const since = t - fx.since;
     const b = BOSSES[fx.boss] || BOSSES.daishi;
@@ -891,6 +892,17 @@ export function drawBossFx(ctx, t, fx) {
             text(ctx, `${b.name} 出現！`, W / 2, 40, { size: 22 * pop, color: '#ffcc80', lw: 6, stroke: '#3a0008' });
             text(ctx, '勝てば特化ゾーン！', W / 2, 66, { size: 12, color: '#ffffff', lw: 4 });
         }
+        return;
+    }
+    if (fx.kind === 'fight') {
+        // こおりくんと相手の激突: 勝ちならこおりくんの技が、負けなら相手の技が当たる
+        rect(ctx, 0, 0, W, H, vgrad(ctx, 0, H, big ? ['#1a0000', '#5a0a00', '#100000'] : ['#05040e', '#2a1040', '#0a0414']));
+        spinRays(ctx, t, W / 2, 100, [fx.win ? '#8fd6f7' : '#ff3a1a', 'rgba(0,0,0,0)'], 24, 0.25, 2500);
+        const shake = hitShake(since);
+        fitChar(ctx, fx.boss, 236 + (fx.win ? shake : 0), 168, 120, big ? 130 : 100, { frame: frameOf(t, 300), tint: fx.win && shake ? '#ffffff' : null }, 2.4);
+        ch(ctx, 'koori', 84 + (fx.win ? 0 : shake), 150, { scale: 3, frame: frameOf(t, 160), tint: !fx.win && shake ? '#ffffff' : null });
+        const me = { x: 96, y: 118 }, foe = { x: 228, y: 112 };
+        drawSkillFx(ctx, t, since, fx.skill, fx.win ? me : foe, fx.win ? foe : me);
         return;
     }
     if (fx.kind === 'win') {

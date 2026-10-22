@@ -12,6 +12,7 @@ import {
     tower, vgrad, weapon
 } from './kit.js';
 import { TEAMS, teamWalking } from './scenes.js';
+import { SKILL_KIND, SKILL_MS, drawSkillFx, hitShake } from './skillFx.js';
 
 const frameOf = (t, ms = 320) => Math.floor(t / ms) % 2;
 const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
@@ -161,8 +162,13 @@ export function drawAttack(ctx, t, a) {
     ch(ctx, atk.who, ax, 146, { scale: aScale, flip: atk.who === 'onioni', frame: frameOf(t, 200) });
     if (atk.weapon) weapon(ctx, atk.weapon, ax + 28, 118);
 
+    // 技のエフェクト (仲間・おにおにの技と、四天王絶対殺す剣。2026-10-21)
+    const fxKind = !atk.weapon ? SKILL_KIND[atk.who] : atk.weapon === 'kill' ? 'rainbowSword' : null;
+    if (a.phase === 'hit' && !a.miss && fxKind) {
+        drawSkillFx(ctx, t, since * (SKILL_MS / ATTACK_MS.hit), fxKind, { x: ax + 20, y: 118 }, { x: 228, y: 112 });
+    }
     // 当たった光
-    if (a.phase === 'hit' && since > 330 && !a.miss) {
+    if (a.phase === 'hit' && since > 330 && !a.miss && !fxKind) {
         const k = Math.min(1, (since - 330) / 150);
         ctx.save();
         ctx.globalAlpha = 0.9 * (1 - Math.max(0, (since - 600) / 200));
@@ -289,11 +295,22 @@ function drawHint(ctx, t, id) {
 }
 
 // ----- AT 0G の当落告知「ラストジャッジ」(画面設計書 5-4。イベントは at:judge) -----
-// j: { team, win, phase: 'intro' | 'result', since }
+// j: { team, win, phase: 'intro' | 'skill' | 'result', since, skill }  skill: 技の見た目 (lcd/skillFx.js)
 export function drawAtJudge(ctx, t, j) {
     const since = t - j.since;
     rect(ctx, 0, 0, W, H, '#05040a');
     const team = TEAMS[j.team] || TEAMS.fiveDX;
+    if (j.phase === 'skill') {
+        // こおりくんと相手のリーダーの激突
+        rays(ctx, W / 2, 96, [j.win ? 'rgba(140,215,250,.5)' : 'rgba(255,60,60,.5)', 'rgba(0,0,0,0)'], 24, 0.35);
+        const shake = hitShake(since);
+        const foe = team.members[2];
+        team.members.forEach((id, i) => ch(ctx, id, 190 + i * 44 + (i === 2 && j.win ? shake : 0), 138, { scale: 1.6, flip: true, frame: frameOf(t, 200), tint: i === 2 && j.win && shake ? '#ffffff' : null }));
+        ch(ctx, 'koori', 70 + (j.win ? 0 : shake), 140, { scale: 3, frame: frameOf(t, 160), tint: !j.win && shake ? '#ffffff' : null });
+        const me = { x: 84, y: 110 }, them = { x: 278, y: 108 };
+        drawSkillFx(ctx, t, since, j.skill, j.win ? me : them, j.win ? them : me);
+        return;
+    }
     if (j.phase === 'intro') {
         // 暗い中に相手チームが立ちはだかる
         rays(ctx, W / 2, 96, ['rgba(255,60,60,.5)', 'rgba(0,0,0,0)'], 24, 0.3 + Math.sin(t / 150) * 0.1);

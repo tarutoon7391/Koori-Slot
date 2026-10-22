@@ -1,0 +1,225 @@
+diff --git a/src/presentation/lcd/at.js b/src/presentation/lcd/at.js
+index 1c9ff58..2e418d1 100644
+--- a/src/presentation/lcd/at.js
++++ b/src/presentation/lcd/at.js
+@@ -12,6 +12,7 @@ import {
+     tower, vgrad, weapon
+ } from './kit.js';
+ import { TEAMS, teamWalking } from './scenes.js';
++import { SKILL_KIND, SKILL_MS, drawSkillFx, hitShake } from './skillFx.js';
+ 
+ const frameOf = (t, ms = 320) => Math.floor(t / ms) % 2;
+ const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+@@ -157,8 +158,13 @@ export function drawAttack(ctx, t, a) {
+     ch(ctx, atk.who, ax, 146, { scale: aScale, flip: atk.who === 'onioni', frame: frameOf(t, 200) });
+     if (atk.weapon) weapon(ctx, atk.weapon, ax + 28, 118);
+ 
++    // 技のエフェクト (仲間・おにおにの技と、四天王絶対殺す剣。2026-10-21)
++    const fxKind = !atk.weapon ? SKILL_KIND[atk.who] : atk.weapon === 'kill' ? 'rainbowSword' : null;
++    if (a.phase === 'hit' && !a.miss && fxKind) {
++        drawSkillFx(ctx, t, since * (SKILL_MS / ATTACK_MS.hit), fxKind, { x: ax + 20, y: 118 }, { x: 228, y: 112 });
++    }
+     // 当たった光
+-    if (a.phase === 'hit' && since > 330 && !a.miss) {
++    if (a.phase === 'hit' && since > 330 && !a.miss && !fxKind) {
+         const k = Math.min(1, (since - 330) / 150);
+         ctx.save();
+         ctx.globalAlpha = 0.9 * (1 - Math.max(0, (since - 600) / 200));
+@@ -285,11 +291,22 @@ function drawHint(ctx, t, id) {
+ }
+ 
+ // ----- AT 0G の当落告知「ラストジャッジ」(画面設計書 5-4。イベントは at:judge) -----
+-// j: { team, win, phase: 'intro' | 'result', since }
++// j: { team, win, phase: 'intro' | 'skill' | 'result', since, skill }  skill: 技の見た目 (lcd/skillFx.js)
+ export function drawAtJudge(ctx, t, j) {
+     const since = t - j.since;
+     rect(ctx, 0, 0, W, H, '#05040a');
+     const team = TEAMS[j.team] || TEAMS.fiveDX;
++    if (j.phase === 'skill') {
++        // こおりくんと相手のリーダーの激突
++        rays(ctx, W / 2, 96, [j.win ? 'rgba(140,215,250,.5)' : 'rgba(255,60,60,.5)', 'rgba(0,0,0,0)'], 24, 0.35);
++        const shake = hitShake(since);
++        const foe = team.members[2];
++        team.members.forEach((id, i) => ch(ctx, id, 190 + i * 44 + (i === 2 && j.win ? shake : 0), 138, { scale: 1.6, flip: true, frame: frameOf(t, 200), tint: i === 2 && j.win && shake ? '#ffffff' : null }));
++        ch(ctx, 'koori', 70 + (j.win ? 0 : shake), 140, { scale: 3, frame: frameOf(t, 160), tint: !j.win && shake ? '#ffffff' : null });
++        const me = { x: 84, y: 110 }, them = { x: 278, y: 108 };
++        drawSkillFx(ctx, t, since, j.skill, j.win ? me : them, j.win ? them : me);
++        return;
++    }
+     if (j.phase === 'intro') {
+         // 暗い中に相手チームが立ちはだかる
+         rays(ctx, W / 2, 96, ['rgba(255,60,60,.5)', 'rgba(0,0,0,0)'], 24, 0.3 + Math.sin(t / 150) * 0.1);
+diff --git a/src/presentation/lcd/bonus.js b/src/presentation/lcd/bonus.js
+index 6f735eb..e013f9a 100644
+--- a/src/presentation/lcd/bonus.js
++++ b/src/presentation/lcd/bonus.js
+@@ -10,6 +10,7 @@ import { ART } from '../art/characters.js';
+ import { drawSymbol } from '../art/symbols.js';
+ import { BODY, H, RAINBOW, W, ch, rainbow, rays, rect, room, roundRect, seeded, text, tower, vgrad, weapon } from './kit.js';
+ import { BIG_CARDS, EPISODES, REG_CARDS } from './bonusStory.js';
++import { drawSkillFx, hitShake } from './skillFx.js';
+ 
+ export const BONUS_NAME = { big: 'BIG BONUS', reg: 'REGULAR BONUS', epbig: 'EPISODE BIG' };
+ export const BONUS_SHORT = { big: 'BIG', reg: 'REG', epbig: 'エピソードBIG' };
+@@ -872,8 +873,8 @@ function drawBossBadge(ctx, t, boss) {
+     text(ctx, '★'.repeat(b.stars), x + 54, y + 22, { size: 7, color: b.stars === 5 ? '#ff6a3a' : '#ffd23a', stroke: null, font: BODY });
+ }
+ 
+-// 登場: 相手が現れて「○○ 出現！」/ 勝利: 撃破して「特化ゾーン確定」/ 敗北: 「撃破ならず…」
+-// fx: { kind: 'intro' | 'win' | 'lose', boss, since }
++// 登場: 相手が現れて「○○ 出現！」/ 戦闘: 技を出し合う / 勝利: 撃破して「特化ゾーン確定」/ 敗北: 「撃破ならず…」
++// fx: { kind: 'intro' | 'fight' | 'win' | 'lose', boss, since, skill, win }  fight の skill は技の見た目 (lcd/skillFx.js)
+ export function drawBossFx(ctx, t, fx) {
+     const since = t - fx.since;
+     const b = BOSSES[fx.boss] || BOSSES.daishi;
+@@ -893,6 +894,17 @@ export function drawBossFx(ctx, t, fx) {
+         }
+         return;
+     }
++    if (fx.kind === 'fight') {
++        // こおりくんと相手の激突: 勝ちならこおりくんの技が、負けなら相手の技が当たる
++        rect(ctx, 0, 0, W, H, vgrad(ctx, 0, H, big ? ['#1a0000', '#5a0a00', '#100000'] : ['#05040e', '#2a1040', '#0a0414']));
++        spinRays(ctx, t, W / 2, 100, [fx.win ? '#8fd6f7' : '#ff3a1a', 'rgba(0,0,0,0)'], 24, 0.25, 2500);
++        const shake = hitShake(since);
++        fitChar(ctx, fx.boss, 236 + (fx.win ? shake : 0), 168, 120, big ? 130 : 100, { frame: frameOf(t, 300), tint: fx.win && shake ? '#ffffff' : null }, 2.4);
++        ch(ctx, 'koori', 84 + (fx.win ? 0 : shake), 150, { scale: 3, frame: frameOf(t, 160), tint: !fx.win && shake ? '#ffffff' : null });
++        const me = { x: 96, y: 118 }, foe = { x: 228, y: 112 };
++        drawSkillFx(ctx, t, since, fx.skill, fx.win ? me : foe, fx.win ? foe : me);
++        return;
++    }
+     if (fx.kind === 'win') {
+         rect(ctx, 0, 0, W, H, '#1a0a00');
+         spinRays(ctx, t, W / 2, 96, RAINBOW, 36, 0.55, 2000);
+diff --git a/src/presentation/lcd/director.js b/src/presentation/lcd/director.js
+index e97dbf7..3ebc044 100644
+--- a/src/presentation/lcd/director.js
++++ b/src/presentation/lcd/director.js
+@@ -18,6 +18,7 @@ import { BIG_CARDS, EPISODES, REG_CARDS } from './bonusStory.js';
+ import { FINISHERS, LINES, SPECIALS } from './battleLines.js';
+ import { CUTIN_MS, TALK_MS, drawSpecialCutin, drawTalk } from './special.js';
+ import { chanceCutin, neraeCutin } from './cutinCast.js';
++import { SKILL_KIND, SKILL_MS } from './skillFx.js';
+ import {
+     INTRO_MS, OPEN_STEP_MS, RESULT_MS, STOCK_MS, TOKKA_END_MS, drawTokka, drawTokkaEnd, drawTokkaIntro, drawTokkaSelect, drawTokkaStock
+ } from './tokka.js';
+@@ -637,8 +638,14 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+                     setButton('white', { lit: false });
+                 });
+             };
+-            if (kind === 'win') specialCut('koori', 'ally', (e.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name, show);
+-            else if (kind === 'lose') enemySpecial(e.boss, show);
++            // カットイン → 技を出し合う (fight) → 結果
++            const fight = () => {
++                v.bossFx = { kind: 'fight', boss: e.boss, win: e.win, skill: e.win ? 'rainbowSword' : SKILL_KIND[e.boss], since: now };
++                after(SKILL_MS * 0.55, () => sound.play('clash'));
++                wait(SKILL_MS, show);
++            };
++            if (kind === 'win') specialCut('koori', 'ally', (e.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name, fight);
++            else if (kind === 'lose') enemySpecial(e.boss, fight);
+             else show();
+         },
+ 
+@@ -752,8 +759,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+                 setButton('white', { lit: false });
+             });
+         };
+-        if (j.win) specialCut('koori', 'ally', FINISHERS.default.name, show);
+-        else enemySpecial(foe, show);
++        const skill = () => {
++            j.phase = 'skill';
++            j.since = now;
++            j.skill = SKILL_KIND[j.win ? 'koori' : foe];
++            after(SKILL_MS * 0.55, () => sound.play('clash'));
++            wait(SKILL_MS, show);
++        };
++        if (j.win) specialCut('koori', 'ally', FINISHERS.default.name, skill);
++        else enemySpecial(foe, skill);
+     }
+ 
+     // 前兆の最後のバトルの結果を見せる
+@@ -770,8 +784,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+             setButton(b.win ? 'rainbow' : 'white', { lit: b.win });
+             wait(b.win ? 1800 : 1600);
+         };
+-        if (b.win) specialCut('koori', 'ally', FINISHERS.default.name, show);
+-        else enemySpecial(foe, show);
++        // カットイン → 技を出す (当たるところを見せる) → 結果
++        const skill = () => {
++            b.phase = 'skill';
++            b.skill = { kind: SKILL_KIND[b.win ? 'koori' : foe], win: b.win, since: now };
++            after(SKILL_MS * 0.55, () => sound.play('clash'));
++            wait(SKILL_MS, show);
++        };
++        if (b.win) specialCut('koori', 'ally', FINISHERS.default.name, skill);
++        else enemySpecial(foe, skill);
+     }
+ 
+     function bgmFor() {
+diff --git a/src/presentation/lcd/scenes.js b/src/presentation/lcd/scenes.js
+index f1e7ace..cc63038 100644
+--- a/src/presentation/lcd/scenes.js
++++ b/src/presentation/lcd/scenes.js
+@@ -6,6 +6,7 @@
+ // =====================================================================
+ 
+ import { ART } from '../art/characters.js';
++import { drawClash, drawSkillFx, hitShake } from './skillFx.js';
+ import { drawSymbol } from '../art/symbols.js';
+ import {
+     BODY, GROUND, H, RAINBOW, W, ch, cutin, floorTag, haze, rainbow, rays, rect, room, roundRect,
+@@ -120,8 +121,9 @@ export function drawMiddle(ctx, t, zencho) {
+     }
+ }
+ 
+-// 連続演出 (前兆の最後)。battle: { round, of, final, win, since, phase }
+-//   phase: 'clash' (ぶつかる) → 'push' (最後: PUSH 待ち) → 'result' (最後: 結果)
++// 連続演出 (前兆の最後)。battle: { round, of, final, win, since, phase, skill }
++//   phase: 'clash' (ぶつかる) → 'push' (最後: PUSH 待ち) → 'skill' (最後: 技を出す) → 'result' (最後: 結果)
++//   skill: { kind, win, since }  win なら こおりくんの技が相手に、負けなら相手の技がこおりくんに当たる
+ export function drawBattle(ctx, t, zencho, battle) {
+     middleBackground(ctx, t);
+     const team = TEAMS[zencho.team];
+@@ -133,19 +135,38 @@ export function drawBattle(ctx, t, zencho, battle) {
+ 
+     if (battle.phase === 'result') return drawBattleResult(ctx, t, zencho, battle);
+ 
+-    // 両側から走ってぶつかる
++    // 技を出す (最後の決着。PUSH のあと、必殺技のカットインのあと)
++    if (battle.phase === 'skill' && battle.skill) {
++        const sk = battle.skill;
++        const ks = t - sk.since;
++        const shake = hitShake(ks);
++        ch(ctx, ours, 115 + (sk.win ? 0 : shake), GROUND, { scale: 3.2, frame: frameOf(t, 160), tint: !sk.win && shake ? '#ffffff' : null });
++        ch(ctx, theirs, 205 + (sk.win ? shake : 0), GROUND, { scale: ART[theirs].w > 34 ? 1.7 : 2, flip: true, frame: frameOf(t, 160), tint: sk.win && shake ? '#ffffff' : null });
++        const me = { x: 128, y: 112 }, foe = { x: 200, y: 112 };
++        drawSkillFx(ctx, t, ks, sk.kind, sk.win ? me : foe, sk.win ? foe : me);
++        roundRect(ctx, 110, 6, 100, 22, 4, 'rgba(0,0,0,.7)', '#ffe040');
++        text(ctx, label, W / 2, 17.5, { size: 13, color: '#ffe040', stroke: null, font: BODY, weight: '700' });
++        return;
++    }
++
++    // 両側から走ってぶつかる → 激突 (火花・衝撃の輪・文字) → 弾かれてもどる
+     const dash = ease(since / 700);
+-    const ox = 60 + dash * 55;
+-    const tx = 260 - dash * 55;
++    const recoil = since > 650 ? ease((since - 650) / 250) * (1 - ease((since - 900) / 500)) * 16 : 0;
++    const ox = 60 + dash * 55 - recoil;
++    const tx = 260 - dash * 55 + recoil;
+     const shake = since > 650 && since < 1000 ? Math.sin(since / 20) * 3 : 0;
+-    ch(ctx, ours, ox + shake, GROUND, { scale: ours === 'koori' ? 3.2 : 2.6, frame: frameOf(t, 160) });
+-    ch(ctx, theirs, tx - shake, GROUND, { scale: ART[theirs].w > 34 ? 1.7 : 2, flip: true, frame: frameOf(t, 160) });
++    ctx.save();
++    ctx.translate(shake, 0);
++    ch(ctx, ours, ox, GROUND, { scale: ours === 'koori' ? 3.2 : 2.6, frame: frameOf(t, 160) });
++    ch(ctx, theirs, tx, GROUND, { scale: ART[theirs].w > 34 ? 1.7 : 2, flip: true, frame: frameOf(t, 160) });
++    ctx.restore();
+     if (since > 650) {
+         const k = Math.min(1, (since - 650) / 200);
+         ctx.save();
+         ctx.globalAlpha = 1 - Math.max(0, (since - 1100) / 400);
+         rays(ctx, W / 2, 110, ['#ffffff', 'rgba(255,255,255,0)'], 28, 0.35 * k);
+         ctx.restore();
++        drawClash(ctx, t, since - 650, W / 2, 112, battle.round);
+     }
+     roundRect(ctx, 110, 6, 100, 22, 4, 'rgba(0,0,0,.7)', final ? '#ffe040' : '#ffffff');
+     text(ctx, label, W / 2, 17.5, { size: 13, color: final ? '#ffe040' : '#ffffff', stroke: null, font: BODY, weight: '700' });

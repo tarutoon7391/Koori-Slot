@@ -6,6 +6,7 @@
 // =====================================================================
 
 import { ART } from '../art/characters.js';
+import { drawClash, drawSkillFx, hitShake } from './skillFx.js';
 import { drawSymbol } from '../art/symbols.js';
 import {
     BODY, GROUND, H, RAINBOW, W, ch, cutin, floorTag, haze, rainbow, rays, rect, room, roundRect,
@@ -120,8 +121,9 @@ export function drawMiddle(ctx, t, zencho) {
     }
 }
 
-// 連続演出 (前兆の最後)。battle: { round, of, final, win, since, phase }
-//   phase: 'clash' (ぶつかる) → 'push' (最後: PUSH 待ち) → 'result' (最後: 結果)
+// 連続演出 (前兆の最後)。battle: { round, of, final, win, since, phase, skill }
+//   phase: 'clash' (ぶつかる) → 'push' (最後: PUSH 待ち) → 'skill' (最後: 技を出す) → 'result' (最後: 結果)
+//   skill: { kind, win, since }  win なら こおりくんの技が相手に、負けなら相手の技がこおりくんに当たる
 export function drawBattle(ctx, t, zencho, battle) {
     middleBackground(ctx, t);
     const team = TEAMS[zencho.team];
@@ -133,19 +135,38 @@ export function drawBattle(ctx, t, zencho, battle) {
 
     if (battle.phase === 'result') return drawBattleResult(ctx, t, zencho, battle);
 
-    // 両側から走ってぶつかる
+    // 技を出す (最後の決着。PUSH のあと、必殺技のカットインのあと)
+    if (battle.phase === 'skill' && battle.skill) {
+        const sk = battle.skill;
+        const ks = t - sk.since;
+        const shake = hitShake(ks);
+        ch(ctx, ours, 115 + (sk.win ? 0 : shake), GROUND, { scale: 3.2, frame: frameOf(t, 160), tint: !sk.win && shake ? '#ffffff' : null });
+        ch(ctx, theirs, 205 + (sk.win ? shake : 0), GROUND, { scale: ART[theirs].w > 34 ? 1.7 : 2, flip: true, frame: frameOf(t, 160), tint: sk.win && shake ? '#ffffff' : null });
+        const me = { x: 128, y: 112 }, foe = { x: 200, y: 112 };
+        drawSkillFx(ctx, t, ks, sk.kind, sk.win ? me : foe, sk.win ? foe : me);
+        roundRect(ctx, 110, 6, 100, 22, 4, 'rgba(0,0,0,.7)', '#ffe040');
+        text(ctx, label, W / 2, 17.5, { size: 13, color: '#ffe040', stroke: null, font: BODY, weight: '700' });
+        return;
+    }
+
+    // 両側から走ってぶつかる → 激突 (火花・衝撃の輪・文字) → 弾かれてもどる
     const dash = ease(since / 700);
-    const ox = 60 + dash * 55;
-    const tx = 260 - dash * 55;
+    const recoil = since > 650 ? ease((since - 650) / 250) * (1 - ease((since - 900) / 500)) * 16 : 0;
+    const ox = 60 + dash * 55 - recoil;
+    const tx = 260 - dash * 55 + recoil;
     const shake = since > 650 && since < 1000 ? Math.sin(since / 20) * 3 : 0;
-    ch(ctx, ours, ox + shake, GROUND, { scale: ours === 'koori' ? 3.2 : 2.6, frame: frameOf(t, 160) });
-    ch(ctx, theirs, tx - shake, GROUND, { scale: ART[theirs].w > 34 ? 1.7 : 2, flip: true, frame: frameOf(t, 160) });
+    ctx.save();
+    ctx.translate(shake, 0);
+    ch(ctx, ours, ox, GROUND, { scale: ours === 'koori' ? 3.2 : 2.6, frame: frameOf(t, 160) });
+    ch(ctx, theirs, tx, GROUND, { scale: ART[theirs].w > 34 ? 1.7 : 2, flip: true, frame: frameOf(t, 160) });
+    ctx.restore();
     if (since > 650) {
         const k = Math.min(1, (since - 650) / 200);
         ctx.save();
         ctx.globalAlpha = 1 - Math.max(0, (since - 1100) / 400);
         rays(ctx, W / 2, 110, ['#ffffff', 'rgba(255,255,255,0)'], 28, 0.35 * k);
         ctx.restore();
+        drawClash(ctx, t, since - 650, W / 2, 112, battle.round);
     }
     roundRect(ctx, 110, 6, 100, 22, 4, 'rgba(0,0,0,.7)', final ? '#ffe040' : '#ffffff');
     text(ctx, label, W / 2, 17.5, { size: 13, color: final ? '#ffe040' : '#ffffff', stroke: null, font: BODY, weight: '700' });
