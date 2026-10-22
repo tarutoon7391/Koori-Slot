@@ -204,11 +204,17 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
         emit(E.BONUS_STANDBY, { bonus: type, stock: s.stock.length });
     }
 
+    // byJudge: 当たったが「狙え」を出さず、最後のゲームのラストジャッジで勝つ (AT 中のボーナス) / revealed: 当たり外れを見せた (狙え・ラストジャッジ) /
+    // judgeForced: デバッグで次のゲームをラストジャッジにした (そのゲームの当選の抽選はしない)
     function newBonus(type, inAt) {
-        return { type, left: 0, atWon: false, inAt, boss: null, bossWin: false, script: [], willWin: false, neraeNext: false, neraePending: false };
+        return {
+            type, left: 0, atWon: false, inAt, boss: null, bossWin: false, script: [], willWin: false, neraeNext: false, neraePending: false,
+            byJudge: false, revealed: false, judgeForced: false
+        };
     }
 
-    // ゾーンの開始と天井 (ガセを含めて必ず前兆に入る)。通常時と AT 中 (AT 中に消化したゲーム数も数える) で使う
+    // ゾーンの開始と天井 (ガセを含めて必ず前兆に入る)。通常時と AT 中 (AT 中に消化したゲーム数も数える) で使う。
+    // 戻り値: このゲームでボーナスが決まった (天井・ゾーンの本前兆。AT 中の違和感演出の抽選に使う)
     function checkZone() {
         const g = s.normalGames;
         const plan = s.plan;
@@ -224,6 +230,7 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
                 s.zencho.left = plan.length;
             }
             s.zencho.tenjoWho = tenjo.who;
+            return true;
         } else if (zoneStarts(s.mode).some(z => g === z + 1)) {
             const start = g - 1;
             const planned = plan.kind === 'zone' && plan.start === start;
@@ -242,7 +249,9 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
                 if (!s.zencho.real) makeReal(s.zencho, bonusType(s.mode));
                 else s.stock.push(bonusType(s.mode));
             }
+            return planned;
         }
+        return false;
     }
 
     // レア役でボーナスに当たった (通常時・AT 中)。前兆中なら本物に変えるか 1G連 のストック、なければ前兆を始める
@@ -351,16 +360,21 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
         emit(E.BONUS_START, { bonus: b.type, games: b.left, inAt: b.inAt });
     }
 
-    // ボーナスの1ゲーム (レバーのとき)。当選したゲームのレバーで「こおりを狙え」(仕様書: 当選 → カットイン → こおりくん揃い)。
-    // AT 中のボーナスは、最初のゲームで相手が登場し、揃ったゲームの終わりに勝利、当たらないまま最後のゲームなら敗北 (docs/events.md)。
+    // ボーナスの1ゲーム (レバーのとき)。当選した役を引いたゲームの次のゲームのレバーで「こおりを狙え」(仕様書: 当選 → カットイン → こおりくん揃い)。
+    // AT 中のボーナス (docs/events.md v0.7) は、最初のゲームで相手が登場し、揃ったゲームの終わりに勝利。当たるボーナスの一部 (show.bossJudge.byJudge) は
+    // 「狙え」を出さず、最後のゲームのラストジャッジ (at:bossJudge) で勝つ。当たらないボーナスも最後のゲームのラストジャッジで負ける。
+    // 当たりを見せる前のレア役では仲間の攻撃 (at:bossAttack)。
     // 戻り値: { shape, nav }  shape はこのゲームの出目の形 (狙えのときは 'koori'・ガセ狙えのときは押し順で変わる形)、nav は押し順ベルのナビ
     function bonusGame(role, forced) {
         const b = s.bonus;
         const total = config.bonusGames[b.type];
         const entry = b.script[total - b.left];
-        // デバッグで役を差しかえたときは、その分だけ当落を抽選し直す
-        const hit = forced ? rollBonusAt(role) : entry.hit;
+        // デバッグで役を差しかえたときは、その分だけ当落を抽選し直す (始まりで決めた当選は残す)。
+        // デバッグでラストジャッジにしたゲームは抽選しない
+        const hit = !b.judgeForced && (entry.hit || (forced && rollBonusAt(role)));
         const first = b.left === total;
+        const last = b.left === 1;
+        const battle = b.inAt && b.type !== 'epbig';
         if (b.inAt && first) {
             if (b.type === 'epbig') {
                 // AT 中のエピソードBIG は入賞した時点で特化ゾーン確定 (相手の登場・勝利の見せ方は演出側)
@@ -376,23 +390,33 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
         // 当選した役を引いたゲームでは「狙え」を出さず、引いた出目を見せてから次のゲームのレバーで「狙え」→ こおりくん揃い (2026-10-21 ユーザー指定。全部の役で同じ)。
         // 最後のゲームで当選したときだけ、次のゲームがないのでそのゲームに出す
         const won = !b.atWon && b.type !== 'epbig' && hit;
-        // 押し順ベルのナビ。内部的に当選したゲームだけ順押しナビ (当選確定。押し順に関係なく 15枚)
-        if (role === 'bell') nav = won ? HOT_NAV : rng.pick(NAVS);
         if (won) {
             b.atWon = true;
-            if (b.left === 1) b.neraePending = true;   // 最後のゲーム: この下ですぐ出す
-            else b.neraeNext = true;                  // 次のゲームのレバーで出す
+            b.willWin = true;
+            // AT 中のボーナスの一部は「狙え」を出さず、最後のゲームのラストジャッジで勝つ【仮 show.bossJudge.byJudge】
+            b.byJudge = battle && rng.chance(config.show.bossJudge.byJudge);
+            if (!b.byJudge) {
+                if (last) b.neraePending = true;   // 最後のゲーム: この下ですぐ出す
+                else b.neraeNext = true;          // 次のゲームのレバーで出す
+            }
         }
+        // 押し順ベルのナビ。内部的に当選したゲームだけ順押しナビ (当選確定。押し順に関係なく 15枚)。ラストジャッジで見せる当選は順押しナビにしない
+        if (role === 'bell') nav = won && !b.byJudge ? HOT_NAV : rng.pick(NAVS);
         if (b.neraePending) {
             b.neraePending = false;
+            b.revealed = true;
             emit(E.BONUS_NERAE, { color: rng.weighted(config.show.nerae.real), win: true });
             shape = 'koori';
             if (b.inAt) b.bossWin = true;
-        } else if (!won) {
-            const lastLose = b.inAt && b.type !== 'epbig' && !b.atWon && b.left === 1;
-            if (lastLose) emit(E.AT_BOSS, { boss: b.boss, final: true, win: false });
+        } else if (battle && last && (!b.atWon || b.byJudge)) {
+            // ラストジャッジ: 当たらないボーナスは負け、byJudge の当選は勝ち (v0.5 までの at:boss の敗北は出さない)
+            b.revealed = true;
+            emit(E.AT_BOSS_JUDGE, { boss: b.boss, win: b.atWon, finisher: judgeFinisher(b.atWon) });
+        } else {
+            // 仲間の攻撃: 当たりを見せる前のレア役 (「狙え」のゲーム・最後のゲームはこの枝に来ない)
+            if (battle && !b.revealed && RARE.includes(role)) emit(E.AT_BOSS_ATTACK, bossAttack(b));
             // ガセの「狙え」(非当選ゲームの約 1/63。出目で見せるのでハズレのゲームに出す)
-            if (!lastLose && b.type !== 'epbig' && !b.atWon && role === 'none' && rng.chance(config.show.neraeGase / noneRate(config.roles.bonus))) {
+            if (b.type !== 'epbig' && !b.atWon && role === 'none' && rng.chance(config.show.neraeGase / noneRate(config.roles.bonus))) {
                 emit(E.BONUS_NERAE, { color: rng.weighted(config.show.nerae.gase), win: false });
                 shape = kooriGaseShape;
             }
@@ -405,6 +429,25 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
         }
         emit(E.BONUS_GAME, { bonus: b.type, left: b.left, nav });
         return { shape, nav };
+    }
+
+    // 仲間の攻撃 (at:bossAttack) の見せ方。このボーナスで特化ゾーンに当たるか (willWin) で振り分けを変える【仮 show.bossAttack】。
+    // 金・虹は当たるボーナスだけ (hot の表にしかない)。当たらない (ガード・よける) ときは白・「畳みかけろ！」なし
+    function bossAttack(b) {
+        const cfg = config.show.bossAttack[b.willWin ? 'hot' : 'cold'];
+        const move = rng.weighted(cfg.move);
+        const result = rng.weighted(cfg.result);
+        const hit = result === 'hit';
+        return { boss: b.boss, move, result, color: hit ? rng.weighted(cfg.color) : 'white', shout: hit && rng.chance(cfg.shout) };
+    }
+
+    // ラストジャッジのとどめ (at:bossJudge の finisher)。負けはいつもこおりくん ('koori')。
+    // 勝つときは 仲間 / 'kooriKill' (絶対殺す剣) / 'koori' を振り分ける【仮 show.bossJudge.finisher】。仲間と 'kooriKill' は出たら確定
+    function judgeFinisher(win) {
+        if (!win) return 'koori';
+        const cfg = config.show.bossJudge;
+        const who = rng.weighted(cfg.finisher);
+        return who === 'ally' ? rng.pick(cfg.allies) : who;
     }
 
     function finishBonus() {
@@ -478,7 +521,7 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
         const notices = [];
         a.left--;
         s.normalGames++;
-        checkZone();
+        const zoneWon = checkZone();
         // 押し順ベルのナビ: ふだんは中押し・右押しの4択。内部的に特化ゾーンに当たったときだけ順押しナビ (当選確定)
         let nav = null;
         if (role === 'bell') {
@@ -511,8 +554,18 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
             }
         }
         stateAfter(role, bonusWon);
+        iwakan(zoneWon || bonusWon || s.tokkaWon, nav, notices);
         const zenchoEnd = zenchoGame(notices);
         return { notices, zenchoEnd, nav };
+    }
+
+    // 違和感演出 (notice の iwakan。AT 中のレバー、特化ゾーン中は出さない)【仮 show.iwakan】。
+    // このゲームでボーナスか特化ゾーンに当たったら hit、当たっていなければ gase の率で出す。effect は均等 (ナビ系はナビのあるゲームだけ)
+    function iwakan(won, nav, notices) {
+        const cfg = config.show.iwakan;
+        if (!rng.chance(won ? cfg.hit : cfg.gase)) return;
+        const effects = nav ? cfg.effects : cfg.effects.filter(e => !cfg.navOnly.includes(e));
+        notices.push({ kind: 'iwakan', timing: 'lever', effect: rng.pick(effects) });
     }
 
     // 上乗せの見せ方 (画面設計書 5-2 の案: 上乗せが大きいほど強い攻撃・強い相手)
@@ -601,7 +654,8 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
             } else if (hit === 'tokka') s.tokkaWon = true;
         }
         stateAfter(role, bonusWon);
-        emit(E.TOKKA_GAME, { set: t.set, game: t.game, add, guarantee: t.guarantee, nav });
+        // hit: このゲームでリプレイ以上 (リプレイかレア役) を引いた = 自力継続の条件 (v0.5。おかランプの点灯)
+        emit(E.TOKKA_GAME, { set: t.set, game: t.game, add, guarantee: t.guarantee, nav, hit: role === 'replay' || RARE.includes(role) });
         return { nav };
     }
 
@@ -738,7 +792,7 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
                 zencho: s.zencho && { ...s.zencho },
                 stock: s.stock.slice(),
                 floor: s.floor,
-                bonus: s.bonus && { type: s.bonus.type, left: s.bonus.left, inAt: s.bonus.inAt, willWin: s.bonus.willWin, atWon: s.bonus.atWon, boss: s.bonus.boss },
+                bonus: s.bonus && { type: s.bonus.type, left: s.bonus.left, inAt: s.bonus.inAt, willWin: s.bonus.willWin, atWon: s.bonus.atWon, byJudge: s.bonus.byJudge, boss: s.bonus.boss },
                 tokka: s.tokka && { ...s.tokka },
                 tokkaStock: s.tokkaStock,
                 tokkaBonus: s.tokkaBonus.slice()
@@ -768,7 +822,18 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG 
             // AT 中にボーナス確定にする (AT 中のボーナス。docs/events.md 3章)
             atBonus: (type = 'big') => { if (s.phase === 'at' && !s.tokka && !s.spin) winBonus(type); },
             // AT の残りを数ゲームにする (終了画面・ラストジャッジの確認)
-            atEndSoon: () => { if (s.at) s.at.left = Math.min(s.at.left, 3); }
+            atEndSoon: () => { if (s.at) s.at.left = Math.min(s.at.left, 3); },
+            // AT 中のボーナスを、次のゲームでラストジャッジにする (win: 勝つか。v0.6)。相手が登場したあと・当たりを見せる前だけ
+            bossJudge: (win = true) => {
+                const b = s.bonus;
+                if (s.phase !== 'bonus' || !b || !b.inAt || b.type === 'epbig' || !b.boss || b.revealed || s.spin || b.left < 1) return;
+                b.left = 1;
+                b.neraePending = false;   // 当たっていて次のゲームが「狙え」だったときも、ラストジャッジにする
+                b.atWon = win;
+                b.willWin = win;
+                b.byJudge = win;
+                b.judgeForced = true;
+            }
         }
     };
 

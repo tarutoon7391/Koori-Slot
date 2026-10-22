@@ -107,7 +107,41 @@
 - 天国からの移行を A 30%・B 12%・C 4%・D 4%・天国 49%・超天国 1% にした（旧: A 20・B 20・C 5・D 5。転落先の A を増やす指示。内訳は内部処理側の判断）。`docs/spec.md` の表を直した。
 - 天国系の定常分布は約 45% → 約 43%。`docs/sim_result.md` を取り直した（設定1 183.7%）。
 
+### 演出側の追加 第2便（`handoff/`）の取り込み（2026-10-22）
+
+同じ手順（1フォルダ 1コミット。パッチは CRLF なので LF に直してから `patch -p1 --fuzz=3`。`logic.patch` は当てない）。`docs/events.md` は、こちらで足した `bonus:game.nav` / `tokka:game.nav` / `at:end.trophy` と、演出側の v0.4〜v0.7 の両方を残して v0.7 にした。
+
+| 順 | フォルダ | 手で入れたハンク・メモ |
+|---|---|---|
+| 1 | `2026-10-21_iwakan` | `events.md` の版（v0.4）、`screen-design.md` の版（v1.4） |
+| 2 | `2026-10-21_okalamp` | `director.js` の `OKA_RAINBOW_RATE` と `savedPattern`（middle-battle のあとの文脈で作られていた）、`events.md` の `tokka:game` の行（`nav` を残して `hit` を足す）・版（v0.5） |
+| 3 | `2026-10-21_battle-fx` | `screen-design.md` の版（パッチの v1.2 は古い） |
+| 4 | `2026-10-21_middle-battle` | `screen-design.md` の版（パッチの v1.3 は古い） |
+| 5 | `2026-10-21_episode-fix` | なし |
+| 6 | `2026-10-21_story-rewrite` | `docs.patch` は当てられない（`docs/story.md` がこちらに無い。演出側からもらったら入れる）。ゲームのセリフ（`bonusStory.js`）は入った |
+| 7 | `2026-10-21_boss-battle` | `events.md` の版（v0.6）と「AT 中のボーナスの流れ」（v0.3 のエピソードBIG の記述を残す）、README（こちらの書き方に合わせた。`docs/story.md` の行は入れない） |
+| 8 | `2026-10-21_judge-kill` | `events.md` の版（v0.7）、README |
+| 9 | `2026-10-21_playfile-fix` | なし（`tests/playfile.test.js` が増えた） |
+
+### v0.4〜v0.7 の内部処理（2026-10-22）
+
+- **`tokka:game` に `hit`**（v0.5）：このゲームでリプレイかレア役（チャンス目を含む）を引いたら `true`（自力継続の条件と同じ）。
+- **`notice` の `iwakan`**（v0.4。違和感演出）：AT 中（特化ゾーン中・ボーナス中は除く）のレバー。そのゲームにボーナスの当選（レア役・ゾーンの本前兆・天井）か特化ゾーンの当選（レア役・押し順ベル）があれば 40%、なければ 1/40 で出す【仮 `show.iwakan`】。`effect` は 8種類から均等。`navGlitch` / `navQuestion` は、そのゲームの `at:game.nav` が `null` でないときだけ選ぶ（`nav` がないゲームは残り 6種類から均等）。`checkZone()` がボーナスの決まったゲームを返すようにした。
+- **AT 中のボーナスの流れ**（v0.6・v0.7）：
+  - ボーナスの始まりに全ゲームの役と当落を先に抽選するのは今のまま。当選したゲームで 30%【仮 `show.bossJudge.byJudge`】を「ラストジャッジで勝つ」にする（`byJudge`）。そのときは「こおりを狙え」を出さず（押し順ベルの当選も順押しナビにしない）、最後のゲーム（残り 1G）のレバーで `at:bossJudge { win: true }`。残り 70% は今までどおり当選したゲームの次のレバーで `bonus:nerae` → こおりくん揃い → `at:boss` の勝利。特化ゾーンの当選率そのものは変えていない（機械割の段階2で別に調整する）。
+  - 当選しないボーナスは、最後のゲームのレバーで `at:bossJudge { win: false, finisher: 'koori' }`。v0.5 までの `at:boss { final: true, win: false }` は出さない。
+  - `finisher`：勝つときは 仲間 45%（13人から均等）・`'kooriKill'` 30%・`'koori'` 25%【仮 `show.bossJudge.finisher`】、負けるときは `'koori'` だけ。
+  - `at:bossAttack { boss, move, result, color, shout }`：当たりを見せる前（「狙え」・ラストジャッジより前）のレア役のゲームのレバー。「狙え」のゲームと最後のゲームでは出さない（当選した役を引いたゲームでは出る）。振り分けは「このボーナスで当たるか」（`willWin`）で hot / cold を選ぶ【仮 `show.bossAttack`。演出側の仮組と同じ値】。`gold` / `rainbow` は hot の表にしかない。`result` が `'hit'` でないときは `color: 'white'`・`shout: false`。
+  - AT 中のエピソードBIG は今までどおり（最初のゲームで `at:boss` の勝利。`at:bossAttack` / `at:bossJudge` は出さない）。
+  - デバッグで役を差しかえたゲームは、始まりで決めた当選を残したうえで差しかえた役でも抽選するようにした（差しかえで当選が消えて `willWin` とずれないように）。
+- **`debug.bossJudge(win)`**：AT 中のボーナス（相手の登場のあと・当たりを見せる前）を、次のゲームでラストジャッジにする。`win` で勝ち負けを決める。
+- `events.js` に `AT_BOSS_ATTACK` / `AT_BOSS_JUDGE` と `NOTICE_KINDS` の `iwakan` を足した。`debug.internal().bonus` に `byJudge` を足した。
+- テストを足した（47件）：`iwakan` の `navGlitch` / `navQuestion` が `nav` なしで出ない・AT 中のレバーだけ・当たり 40% とハズレ 1/40、ラストジャッジの負けの `finisher` が `'koori'` 以外にならない（`debug.bossJudge` とふつうに回したときの両方）・`kooriKill` と仲間は勝つときだけ、`gold` / `rainbow` の `bossAttack` が負けボーナスで出ない、`tokka:game.hit` がリプレイ以上と一致する、エピソードBIG に攻撃・ラストジャッジが出ない。AT 中のボーナスのテストをラストジャッジの流れに直した。
+
 ### 残っている【仮】の値（ユーザー確認待ち）
+
+- 違和感演出の出る率（`show.iwakan` 当たり 40%・ハズレ 1/40）
+- ラストジャッジで勝つ割合・とどめの振り分け（`show.bossJudge` 30%・仲間 45%・絶対殺す剣 30%・こおりくん 25%）、仲間の攻撃の振り分け（`show.bossAttack`）
 
 - 役の出現率（`roles.normal / bonus / at`）と共通ベルの有無（`commonBell`）
 - 設定差の大きさ（`rareBoost` +6%／段）

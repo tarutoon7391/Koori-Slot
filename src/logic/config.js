@@ -174,6 +174,28 @@ export const CONFIG = {
             win: { daishi: 10, zumitani: 15, runaya: 20, nozoema: 25, maou: 30 },
             lose: { daishi: 45, zumitani: 30, runaya: 15, nozoema: 8, maou: 2 }
         },
+        // AT 中のボーナスで、当たりを見せる前のレア役のときの仲間の攻撃 (at:bossAttack。events.md v0.6)【仮: 演出側の仮組の値】
+        // hot: このボーナスで特化ゾーンに当たる / cold: 当たらない。金・虹は hot だけ (確定)。shout: 「畳みかけろ！」の率 (当たったときだけ)
+        bossAttack: {
+            hot: { move: { cutin: 50, special: 50 }, result: { hit: 75, guard: 15, dodge: 10 }, color: { white: 35, red: 40, gold: 17, rainbow: 8 }, shout: 0.5 },
+            cold: { move: { cutin: 80, special: 20 }, result: { hit: 35, guard: 35, dodge: 30 }, color: { white: 85, red: 15 }, shout: 0.08 }
+        },
+        // AT 中のボーナスの最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge。events.md v0.7)【仮】
+        // byJudge: 当たるボーナスのうち「狙え」を出さず、ラストジャッジで勝つ割合 (特化ゾーンの当選率そのものは変わらない)。
+        // finisher: 勝つときのとどめの振り分け (%)。ally = 仲間 (allies から均等)・kooriKill = 絶対殺す剣 (どちらも確定)・koori。負けはいつも koori
+        bossJudge: {
+            byJudge: 0.3,
+            finisher: { ally: 45, kooriKill: 30, koori: 25 },
+            allies: ['onioni', 'yasu', 'tamu', 'dake', 'okagappa', 'hibikimakuri', 'yamamou', 'sasaki', 'kotani', 'asahara', 'shibata', 'ikekimu', 'ueno']
+        },
+        // 違和感演出 (notice の iwakan。AT 中のレバー、特化ゾーン中は出さない。events.md v0.4)【仮】
+        // hit: そのゲームでボーナスか特化ゾーンに当たったときに出す率 / gase: 当たっていないときの率。effect は均等、navOnly はナビのあるゲームだけ
+        iwakan: {
+            hit: 0.4,
+            gase: 1 / 40,
+            effects: ['navGlitch', 'navQuestion', 'noise', 'mute', 'freeze', 'invert', 'button', 'lever'],
+            navOnly: ['navGlitch', 'navQuestion']
+        },
         // 設定示唆トロフィー (AT 終了画面の左下に落ちてくる。演出側の依頼 handoff/2026-10-21_zukan-trophy)。
         // rate: 出る率 / weights: 出たときの色の重み (設定ごと。設定より上の色は 0 = 出ない)【仮: 前作の値】
         trophy: {

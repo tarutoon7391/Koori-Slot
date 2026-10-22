@@ -1,6 +1,6 @@
 # 内部処理のまとめ（こおりくんの大冒険～最凶のASO摩天楼への挑戦～）
 
-`node tools/dump-logic.mjs` が `src/logic/config.js` から作った書類（作成: 2026-10-21）。
+`node tools/dump-logic.mjs` が `src/logic/config.js` から作った書類（作成: 2026-10-22）。
 数値は `config.js` の値そのもの。流れの説明は `src/logic/machine.js` / `reelControl.js` のとおり。
 仕様書は `docs/spec.md`、演出との約束は `docs/events.md`、変更履歴は `docs/CHANGELOG_logic.md`、シミュレーション結果は `docs/sim_result.md`。
 【仮】= 仕様書で未決の たたき台（ユーザー確認待ち）。それ以外は仕様書で「決定」の値。

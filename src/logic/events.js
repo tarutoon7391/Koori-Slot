@@ -36,14 +36,16 @@ export const EVENTS = {
     AT_GAME: 'at:game',           // { left, nav }  nav: 押し順 [リール番号, …] (ナビのないゲームは null)。nav[0] が 0 (順押し) は当選確定
     AT_ADD: 'at:add',             // { games, left, attacker, enemy }  上乗せ。attacker: 'yasu' | 'tamu' | 'dake' | 'onioni' | 'sword' | 'hammer' | 'kill' / enemy: キャラの id
     AT_MISS: 'at:miss',           // { attacker, enemy }  上乗せなしのレア役 (「ミス！」)
-    AT_BOSS: 'at:boss',           // { boss, final, win }  AT 中のボーナスの相手 (登場 / 勝利 / 敗北)
+    AT_BOSS: 'at:boss',           // { boss, final, win }  AT 中のボーナスの相手 (登場 / 勝利。v0.6 から敗北は at:bossJudge)
+    AT_BOSS_ATTACK: 'at:bossAttack', // { boss, move, result, color, shout }  AT 中のボーナスで、当たりを見せる前のレア役のときの仲間の攻撃 (v0.6)。金・虹は確定
+    AT_BOSS_JUDGE: 'at:bossJudge', // { boss, win, finisher }  AT 中のボーナスの最後のゲームの一騎打ち「ラストジャッジ」(v0.6)。finisher: 'koori' | 'kooriKill' (確定。v0.7) | 仲間の id (確定)
     AT_JUDGE: 'at:judge',         // { win, bonus }  前兆中に AT のゲーム数がなくなったときの当落告知
     AT_END: 'at:end',             // { games, payout, hint, trophy }  hint: 設定示唆の画像 / trophy: 設定示唆トロフィーの色 'white' | 'blue' | 'green' | 'purple' | 'red' | 'rainbow' (出ないときは null。設定より上の色は出ない)
 
     // ----- 上乗せ特化ゾーン -----
     TOKKA_STOCK: 'tokka:stock',   // { stock }  特化ゾーンに当たった (当たったゲームの終わり)
     TOKKA_START: 'tokka:start',   // { stock }  特化ゾーンが始まる (次のレバーから)
-    TOKKA_GAME: 'tokka:game',     // { set, game, add, guarantee, nav }  特化ゾーンの1ゲーム (レバーのとき)。nav: 押し順ベルのナビ
+    TOKKA_GAME: 'tokka:game',     // { set, game, add, guarantee, nav, hit }  特化ゾーンの1ゲーム (レバーのとき)。nav: 押し順ベルのナビ / hit: リプレイ以上を引いた (v0.5)
     TOKKA_SET: 'tokka:set',       // { set, cont, revive }  セットの終わり
     TOKKA_END: 'tokka:end'        // { total, sets, left }  特化ゾーンの終わり
 };
@@ -53,4 +55,5 @@ export const EVENTS = {
 //   flash      { timing: 'afterStop', level: 'small' | 'big' | 'rainbow' }  レア役のフラッシュ
 //   cutin      { timing: 'lever', color: 'blue' | 'green' | 'red' | 'gold' | 'rainbow' }  前兆中のカットイン
 //   kakutei    { timing: 'afterStop' }  確定音
-export const NOTICE_KINDS = ['sakibare', 'flash', 'cutin', 'kakutei'];
+//   iwakan     { timing: 'lever', effect }  違和感演出 (v0.4。AT 中、特化ゾーン中を除く)。effect: 'navGlitch' | 'navQuestion' (ナビのあるゲームだけ) | 'noise' | 'mute' | 'freeze' | 'invert' | 'button' | 'lever'
+export const NOTICE_KINDS = ['sakibare', 'flash', 'cutin', 'kakutei', 'iwakan'];

@@ -591,10 +591,11 @@ test('ガセ「狙え」の色は青・緑・赤・金だけ (虹は当選のと
     assert.ok(colors.gase.size >= 3 && colors.real.size >= 3, `${[...colors.gase]} / ${[...colors.real]}`);
 });
 
-test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最後のゲームで敗北) → AT に戻る。相手は当たるボーナスかで選ぶ', () => {
+test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最後のゲームでラストジャッジ) → AT に戻る。相手は当たるボーナスかで選ぶ', () => {
     let wins = 0;
+    let judgeWins = 0;
     let loses = 0;
-    for (let seed = 1; seed <= 30; seed++) {
+    for (let seed = 1; seed <= 60; seed++) {
         const m = createMachine({ seed });
         const rng = createRng(seed);
         const log = [];
@@ -609,12 +610,16 @@ test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最�
         const start = log.find(e => e.type === EVENTS.BONUS_START);
         assert.equal(start.inAt, true);
         const boss = log.filter(e => e.type === EVENTS.AT_BOSS);
+        const judge = log.filter(e => e.type === EVENTS.AT_BOSS_JUDGE);
         assert.equal(boss[0].final, false, '最初は登場');
-        const last = boss[boss.length - 1];
-        assert.equal(boss.length, 2);
-        assert.ok(boss.every(b => b.boss === boss[0].boss), '相手は同じ');
-        assert.equal(last.win, willWin, '開始時に決めた当落と一致');
-        if (last.win) {
+        assert.ok(boss.concat(judge).every(b => b.boss === boss[0].boss), '相手は同じ');
+        assert.ok(!boss.some(b => b.final && !b.win), 'at:boss の敗北は出さない (v0.6)');
+        if (boss.length === 2) {
+            // 狙え → 揃い → 勝利 (ラストジャッジは出ない)
+            const last = boss[1];
+            assert.equal(last.win, true);
+            assert.equal(judge.length, 0);
+            assert.equal(willWin, true, '開始時に決めた当落と一致');
             wins++;
             const i = log.indexOf(last);
             const nerae = log.findIndex(e => e.type === EVENTS.BONUS_NERAE && e.win);
@@ -622,12 +627,210 @@ test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最�
             assert.ok(nerae < align && align < i, '狙え → 揃い → 勝利の順');
             assert.equal(log[align].win, 'koori');
             assert.ok(log.some(e => e.type === EVENTS.TOKKA_START), '勝ったら特化ゾーン');
-        } else loses++;
+        } else {
+            // 最後のゲーム (残り 1G) のレバーでラストジャッジ。勝ちは「狙え」を出さない
+            assert.equal(boss.length, 1);
+            assert.equal(judge.length, 1);
+            assert.equal(judge[0].win, willWin, '開始時に決めた当落と一致');
+            const games = log.filter(e => e.type === EVENTS.BONUS_GAME);
+            const lastGame = games[games.length - 1];
+            assert.equal(lastGame.left, 0);
+            const ij = log.indexOf(judge[0]);
+            const lastLever = log.slice(0, log.indexOf(lastGame)).map(e => e.type).lastIndexOf(EVENTS.LEVER);
+            assert.ok(lastLever < ij && ij < log.indexOf(lastGame), '最後のゲームのレバー');
+            if (judge[0].win) {
+                judgeWins++;
+                assert.ok(!log.some(e => e.type === EVENTS.BONUS_NERAE && e.win), 'ラストジャッジで勝つときは狙えを出さない');
+                assert.ok(log.some(e => e.type === EVENTS.TOKKA_START), '勝ったら特化ゾーン');
+            } else loses++;
+        }
+        // 仲間の攻撃は当たりを見せる前だけ (狙えのゲーム・最後のゲームは出さない)
+        for (const a of log.filter(e => e.type === EVENTS.AT_BOSS_ATTACK)) {
+            const i = log.indexOf(a);
+            const lever = log.slice(0, i).map(e => e.type).lastIndexOf(EVENTS.LEVER);
+            const game = log.find((e, k) => k > i && e.type === EVENTS.BONUS_GAME);
+            assert.ok(game.left > 0, '最後のゲームには出さない');
+            assert.ok(!log.slice(lever, i).some(e => e.type === EVENTS.BONUS_NERAE), '狙えのゲームには出さない');
+            const reveal = log.findIndex(e => (e.type === EVENTS.BONUS_NERAE && e.win) || e.type === EVENTS.AT_BOSS_JUDGE);
+            assert.ok(i < reveal, '当たりを見せる前');
+        }
         const end = log.find(e => e.type === EVENTS.BONUS_END);
         assert.equal(end.at, false);
         assert.ok(['at', 'standby'].includes(m.snapshot().phase) || log.some(e => e.type === EVENTS.AT_END));
     }
-    assert.ok(wins > 0 && loses > 0, `勝ち ${wins} 負け ${loses}`);
+    assert.ok(wins > 0 && judgeWins > 0 && loses > 0, `狙えで勝ち ${wins} ラストジャッジで勝ち ${judgeWins} 負け ${loses}`);
+});
+
+// AT に入って AT 中のボーナスを始め、最初のゲーム (相手の登場) まで回した台
+function atBonusMachine(seed, type = 'big', patch = () => {}) {
+    const m = machineWith(patch, { seed });
+    const rng = createRng(seed);
+    const log = [];
+    m.on(e => log.push(e));
+    m.debug.direct();
+    play(m, rng);
+    m.debug.atBonus(type);
+    play(m, rng);   // 図柄をそろえる
+    m.debug.setNextRole('none');
+    play(m, rng);   // 最初のゲーム (登場)
+    return { m, rng, log };
+}
+
+test('ラストジャッジ: 負けの finisher は いつも koori。kooriKill と仲間は勝つときだけ。debug.bossJudge で次のゲームがラストジャッジ', () => {
+    const seen = { win: new Set(), lose: new Set() };
+    for (let seed = 1; seed <= 200; seed++) {
+        const win = seed % 2 === 0;
+        const { m, rng, log } = atBonusMachine(seed);
+        m.debug.bossJudge(win);
+        play(m, rng);
+        const j = log.find(e => e.type === EVENTS.AT_BOSS_JUDGE);
+        assert.ok(j, 'ラストジャッジが出る');
+        assert.equal(j.win, win);
+        assert.equal(log.filter(e => e.type === EVENTS.BONUS_GAME).pop().left, 0, '最後のゲーム');
+        if (!win) assert.equal(j.finisher, 'koori', '負けは koori だけ');
+        seen[win ? 'win' : 'lose'].add(j.finisher === 'koori' || j.finisher === 'kooriKill' ? j.finisher : 'ally');
+        if (!['koori', 'kooriKill'].includes(j.finisher)) assert.ok(CONFIG.show.bossJudge.allies.includes(j.finisher));
+        let guard = 0;
+        while (m.snapshot().phase === 'bonus' && guard++ < 5) play(m, rng);
+        assert.equal(log.some(e => e.type === EVENTS.TOKKA_START), win, '勝ったら特化ゾーン、負けたら AT に戻る');
+    }
+    assert.deepEqual([...seen.lose], ['koori']);
+    assert.ok(seen.win.has('kooriKill') && seen.win.has('ally') && seen.win.has('koori'), [...seen.win].join(','));
+});
+
+test('ラストジャッジ: ふつうに回しても、負けのラストジャッジの finisher は koori 以外にならない (byJudge 100%)', () => {
+    let judges = 0;
+    for (let seed = 1; seed <= 150; seed++) {
+        const { m, rng, log } = atBonusMachine(seed, seed % 3 ? 'big' : 'reg', c => { c.show.bossJudge.byJudge = 1; });
+        let guard = 0;
+        while (!log.some(e => e.type === EVENTS.BONUS_END) && guard++ < 100) play(m, rng);
+        for (const j of log.filter(e => e.type === EVENTS.AT_BOSS_JUDGE)) {
+            judges++;
+            if (!j.win) assert.equal(j.finisher, 'koori');
+            else assert.ok(!log.some(e => e.type === EVENTS.BONUS_NERAE && e.win), 'byJudge 100% なら狙えは出ない');
+        }
+    }
+    assert.ok(judges > 100, `ラストジャッジ ${judges}`);
+});
+
+test('仲間の攻撃: 金・虹は当たるボーナスでだけ。hit でないときは白で畳みかけろなし', () => {
+    const colors = { win: new Set(), lose: new Set() };
+    let attacks = 0;
+    for (let seed = 1; seed <= 150; seed++) {
+        // レア役を出やすくして、仲間の攻撃をたくさん出す
+        const { m, rng, log } = atBonusMachine(seed, 'big', c => { c.roles.bonus.strongCherry = 8; c.roles.bonus.weakCherry = 8; });
+        let guard = 0;
+        while (!log.some(e => e.type === EVENTS.BONUS_END) && guard++ < 100) play(m, rng);
+        const won = log.some(e => (e.type === EVENTS.AT_BOSS && e.final && e.win) || (e.type === EVENTS.AT_BOSS_JUDGE && e.win));
+        for (const a of log.filter(e => e.type === EVENTS.AT_BOSS_ATTACK)) {
+            attacks++;
+            assert.ok(['cutin', 'special'].includes(a.move));
+            assert.ok(['hit', 'guard', 'dodge'].includes(a.result));
+            if (a.result !== 'hit') {
+                assert.equal(a.color, 'white');
+                assert.equal(a.shout, false);
+            }
+            colors[won ? 'win' : 'lose'].add(a.color);
+        }
+    }
+    assert.ok(!colors.lose.has('gold') && !colors.lose.has('rainbow'), `負けボーナスの色 ${[...colors.lose]}`);
+    assert.ok(colors.win.has('gold') && colors.win.has('rainbow') && colors.lose.size > 0, `勝ち ${[...colors.win]} / 負け ${[...colors.lose]} (${attacks} 回)`);
+});
+
+test('AT 中のエピソードBIG には仲間の攻撃・ラストジャッジを出さない', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+        const { m, rng, log } = atBonusMachine(seed, 'epbig', c => { c.roles.bonus.strongCherry = 8; });
+        let guard = 0;
+        while (!log.some(e => e.type === EVENTS.BONUS_END) && guard++ < 100) play(m, rng);
+        assert.ok(!log.some(e => e.type === EVENTS.AT_BOSS_ATTACK || e.type === EVENTS.AT_BOSS_JUDGE));
+    }
+});
+
+test('違和感演出 (iwakan): AT 中のレバーだけ。navGlitch・navQuestion は at:game の nav があるゲームだけ', () => {
+    const effects = new Set();
+    let count = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+        // 出やすくして確かめる
+        const m = machineWith(c => { c.show.iwakan.gase = 0.5; }, { seed });
+        const rng = createRng(seed);
+        const log = [];
+        m.on(e => log.push(e));
+        m.debug.direct();
+        play(m, rng);
+        for (let i = 0; i < 300 && m.snapshot().phase !== 'normal'; i++) play(m, rng);
+        log.forEach((e, i) => {
+            if (e.type !== EVENTS.NOTICE || e.kind !== 'iwakan') return;
+            count++;
+            effects.add(e.effect);
+            assert.equal(e.timing, 'lever');
+            assert.ok(CONFIG.show.iwakan.effects.includes(e.effect));
+            // 同じゲームの at:game (レバーの直後に出る)
+            const lever = log.slice(0, i).map(x => x.type).lastIndexOf(EVENTS.LEVER);
+            assert.equal(log[lever].phase, 'at', 'AT 中のレバー');
+            const game = log.slice(lever, i).find(x => x.type === EVENTS.AT_GAME);
+            assert.ok(game, '特化ゾーン中・ボーナス中には出さない');
+            if (CONFIG.show.iwakan.navOnly.includes(e.effect)) assert.ok(game.nav, `${e.effect} は nav のあるゲームだけ`);
+        });
+    }
+    assert.ok(count > 100 && effects.size === 8, `${count} 回 ${[...effects]}`);
+});
+
+test('違和感演出 (iwakan): 当たったゲームは 40%・当たっていないゲームは 1/40', () => {
+    const rate = { won: [0, 0], none: [0, 0] };
+    for (let seed = 1; seed <= 40; seed++) {
+        const m = createMachine({ seed });
+        const rng = createRng(seed);
+        const log = [];
+        m.on(e => log.push(e));
+        m.debug.direct();
+        play(m, rng);
+        for (let i = 0; i < 400 && m.snapshot().phase === 'at'; i++) {
+            const before = log.length;
+            const inTokka = Boolean(m.debug.internal().tokka);
+            // 半分くらいのゲームを特化ゾーン当選にする
+            const won = !inTokka && i % 2 === 0;
+            if (won) m.debug.tokka();
+            play(m, rng);
+            const g = log.slice(before);
+            if (!g.some(e => e.type === EVENTS.AT_GAME)) continue;
+            const hasZone = g.some(e => e.type === EVENTS.ZENCHO_START || e.type === EVENTS.AT_BOSS);
+            if (hasZone) continue;
+            const key = won ? 'won' : g.some(e => e.type === EVENTS.TOKKA_STOCK) ? null : 'none';
+            if (!key) continue;
+            rate[key][0]++;
+            if (g.some(e => e.type === EVENTS.NOTICE && e.kind === 'iwakan')) rate[key][1]++;
+        }
+    }
+    const won = rate.won[1] / rate.won[0];
+    const none = rate.none[1] / rate.none[0];
+    assert.ok(Math.abs(won - 0.4) < 0.05, `当たり ${won} (${rate.won})`);
+    assert.ok(none < 0.06, `ハズレ ${none} (${rate.none})`);
+});
+
+test('tokka:game の hit は「リプレイ以上 (リプレイかレア役)」と一致する', () => {
+    const RARES = ['weakCherry', 'strongCherry', 'midCherry', 'weakSuika', 'strongSuika', 'chance'];
+    const seen = { true: 0, false: 0 };
+    for (let seed = 1; seed <= 10; seed++) {
+        const m = machineWith(c => { c.tokka.contTable = { 80: 100 }; }, { seed });
+        const rng = createRng(seed);
+        const log = [];
+        m.on(e => log.push(e));
+        m.debug.direct();
+        play(m, rng);
+        m.debug.tokka();
+        play(m, rng);
+        const roles = ['none', 'bell', 'commonBell', 'replay', ...RARES];
+        for (let i = 0; i < 60 && m.debug.internal().tokka; i++) {
+            const role = roles[i % roles.length];
+            m.debug.setNextRole(role);
+            play(m, rng);
+            const g = log.filter(e => e.type === EVENTS.TOKKA_GAME).pop();
+            assert.equal(typeof g.hit, 'boolean');
+            assert.equal(g.hit, role === 'replay' || RARES.includes(role), role);
+            seen[g.hit]++;
+        }
+    }
+    assert.ok(seen.true > 0 && seen.false > 0, JSON.stringify(seen));
 });
 
 test('AT 中のエピソードBIG は入賞した時点で特化ゾーン確定 (at:boss は最初のゲームに final: true, win: true)', () => {
