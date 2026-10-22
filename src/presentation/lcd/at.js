@@ -65,7 +65,11 @@ export function drawAtMain(ctx, t, at) {
         const names = ['左', '中', '右'];
         const hot = at.nav[0] === 0;
         roundRect(ctx, 176, 140, 136, 22, 4, 'rgba(0,0,0,.65)', hot ? rainbow(ctx, 176, 0, 312, 0) : '#ff3a3a');
-        text(ctx, at.nav.map((r, i) => `${i + 1}${names[r]}`).join(' → '), 244, 151.5, { size: 11, color: hot ? rainbow(ctx, 190, 0, 300, 0) : frameOf(t, 250) ? '#ffffff' : '#ffd0d0', stroke: null, font: BODY, weight: '700' });
+        // 違和感演出: ナビが乱れる・「？」になる
+        const navText = at.navOdd === 'question' ? '？ → ？ → ？'
+            : at.navOdd === 'glitch' ? at.nav.map(() => `${1 + Math.floor(Math.random() * 3)}${names[Math.floor(Math.random() * 3)]}`).join(' → ')
+                : at.nav.map((r, i) => `${i + 1}${names[r]}`).join(' → ');
+        text(ctx, navText, 244, 151.5, { size: 11, color: hot ? rainbow(ctx, 190, 0, 300, 0) : frameOf(t, 250) ? '#ffffff' : '#ffd0d0', stroke: null, font: BODY, weight: '700' });
         if (hot) {
             const pop = 1 + Math.sin(t / 90) * 0.06;
             text(ctx, '順押し!?', 244, 126, { size: 16 * pop, color: rainbow(ctx, 200, 0, 290, 0), lw: 5, stroke: '#1a0a2a' });

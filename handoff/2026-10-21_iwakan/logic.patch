@@ -1,0 +1,59 @@
+diff --git a/src/logic/config.js b/src/logic/config.js
+index 0e4522e..f730497 100644
+--- a/src/logic/config.js
++++ b/src/logic/config.js
+@@ -99,7 +99,9 @@ export const CONFIG = {
+             chance: { 10: 40, 20: 35, 30: 20, 100: 4, 200: 0.6, 300: 0.4 }
+         },
+         // 押し順ベルで順押しナビ (当選確定) が出る率【仮】。出たら特化ゾーン当選にする
+-        hotNavRate: 1 / 60
++        hotNavRate: 1 / 60,
++        // 違和感演出 (notice の iwakan)【仮】: ボーナスか特化ゾーンに当たったゲームで出る率・当たっていないゲームで出る率 (ガセ)
++        iwakan: { hit: 0.4, gase: 1 / 40, types: ['noise', 'mute', 'freeze', 'invert', 'button', 'lever'], navTypes: ['navGlitch', 'navQuestion'] }
+     },
+ 
+     // ----- 上乗せ特化ゾーン (仕様書。仮組は最小限) -----
+diff --git a/src/logic/events.js b/src/logic/events.js
+index 74c5fb5..42e1684 100644
+--- a/src/logic/events.js
++++ b/src/logic/events.js
+@@ -53,4 +53,5 @@ export const EVENTS = {
+ //   flash      { timing: 'afterStop', level: 'small' | 'big' | 'rainbow' }  レア役のフラッシュ
+ //   cutin      { timing: 'lever', color: 'blue' | 'green' | 'red' | 'gold' | 'rainbow' }  前兆中のカットイン
+ //   kakutei    { timing: 'afterStop' }  確定音
+-export const NOTICE_KINDS = ['sakibare', 'flash', 'cutin', 'kakutei'];
++//   iwakan     { timing: 'lever', effect }  違和感演出 (AT 中。effect: 'navGlitch' | 'navQuestion' | 'noise' | 'mute' | 'freeze' | 'invert' | 'button' | 'lever')
++export const NOTICE_KINDS = ['sakibare', 'flash', 'cutin', 'kakutei', 'iwakan'];
+diff --git a/src/logic/machine.js b/src/logic/machine.js
+index 1070661..bfd1492 100644
+--- a/src/logic/machine.js
++++ b/src/logic/machine.js
+@@ -388,6 +388,7 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+     function atGame(role) {
+         const a = s.at;
+         const notices = [];
++        let bonusHere = false;   // このゲームでボーナスに当たった (違和感演出の抽選に使う)
+         a.left--;
+         s.normalGames++;
+         checkZone();
+@@ -405,6 +406,7 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+             const r = rng.next() * 100;
+             const bonusRate = config.at.bonusRate[role] || 0;
+             if (r < bonusRate) {
++                bonusHere = true;
+                 rareBonus(role === 'weakSuika' ? 'epbig' : bonusType(s.mode));
+             } else if (r < bonusRate + (config.tokka.rate[role] || 0)) {
+                 s.tokkaWon = true;
+@@ -421,6 +423,12 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+                 }
+             }
+         }
++        // 違和感演出: 当たったゲームで出やすく、当たっていなくてもたまに出る (ガセ)【仮】
++        const iw = config.at.iwakan;
++        const won = s.tokkaWon || bonusHere;
++        if (rng.chance(won ? iw.hit : iw.gase)) {
++            notices.push({ kind: 'iwakan', timing: 'lever', effect: rng.pick(nav ? iw.types.concat(iw.navTypes) : iw.types) });
++        }
+         const zenchoEnd = zenchoGame(notices);
+         return { notices, zenchoEnd };
+     }

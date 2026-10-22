@@ -1,0 +1,220 @@
+diff --git a/src/presentation/components/Cabinet.jsx b/src/presentation/components/Cabinet.jsx
+index 52b38a2..bc876ca 100644
+--- a/src/presentation/components/Cabinet.jsx
++++ b/src/presentation/components/Cabinet.jsx
+@@ -38,7 +38,7 @@ function Lcd({ game }) {
+     return <canvas ref={ref} className="lcd" aria-label="液晶" onPointerDown={onPointerDown} />;
+ }
+ 
+-function Reels({ game, nav, stopped }) {
++function Reels({ game, nav, navOdd, stopped }) {
+     const ref = useRef(null);
+     useEffect(() => {
+         game.reels.attach(ref.current);
+@@ -61,8 +61,9 @@ function Reels({ game, nav, stopped }) {
+         <div className="reel-box">
+             <div className="nav" aria-live="polite">
+                 {[0, 1, 2].map(i => (
+-                    <span key={i} className={navClass(i)}>
+-                        {order ? order[i] : ''}
++                    <span key={i} className={navOdd && order ? `${navClass(i)} odd` : navClass(i)}>
++                        {/* 違和感演出: ナビの数字が乱れる / 「？」になる */}
++                        {order ? (navOdd === 'question' ? '?' : navOdd === 'glitch' ? 1 + Math.floor(Math.random() * 3) : order[i]) : ''}
+                     </span>
+                 ))}
+             </div>
+@@ -107,7 +108,7 @@ export default function Cabinet({ game }) {
+             <div className="lcd-frame">
+                 <Lcd game={game} />
+             </div>
+-            <Reels game={game} nav={d.nav} stopped={stopped} />
++            <Reels game={game} nav={d.nav} navOdd={d.navOdd} stopped={stopped} />
+             <div className="leds">
+                 <span>CREDIT <b>{d.credit}</b></span>
+                 <span>PAYOUT <b>{d.lastPayout}</b></span>
+diff --git a/src/presentation/lcd/at.js b/src/presentation/lcd/at.js
+index 2e418d1..23033b1 100644
+--- a/src/presentation/lcd/at.js
++++ b/src/presentation/lcd/at.js
+@@ -66,7 +66,11 @@ export function drawAtMain(ctx, t, at) {
+         const names = ['左', '中', '右'];
+         const hot = at.nav[0] === 0;
+         roundRect(ctx, 176, 140, 136, 22, 4, 'rgba(0,0,0,.65)', hot ? rainbow(ctx, 176, 0, 312, 0) : '#ff3a3a');
+-        text(ctx, at.nav.map((r, i) => `${i + 1}${names[r]}`).join(' → '), 244, 151.5, { size: 11, color: hot ? rainbow(ctx, 190, 0, 300, 0) : frameOf(t, 250) ? '#ffffff' : '#ffd0d0', stroke: null, font: BODY, weight: '700' });
++        // 違和感演出: ナビが乱れる・「？」になる
++        const navText = at.navOdd === 'question' ? '？ → ？ → ？'
++            : at.navOdd === 'glitch' ? at.nav.map(() => `${1 + Math.floor(Math.random() * 3)}${names[Math.floor(Math.random() * 3)]}`).join(' → ')
++                : at.nav.map((r, i) => `${i + 1}${names[r]}`).join(' → ');
++        text(ctx, navText, 244, 151.5, { size: 11, color: hot ? rainbow(ctx, 190, 0, 300, 0) : frameOf(t, 250) ? '#ffffff' : '#ffd0d0', stroke: null, font: BODY, weight: '700' });
+         if (hot) {
+             const pop = 1 + Math.sin(t / 90) * 0.06;
+             text(ctx, '順押し!?', 244, 126, { size: 16 * pop, color: rainbow(ctx, 200, 0, 290, 0), lw: 5, stroke: '#1a0a2a' });
+diff --git a/src/presentation/lcd/director.js b/src/presentation/lcd/director.js
+index 8ab567f..76946a4 100644
+--- a/src/presentation/lcd/director.js
++++ b/src/presentation/lcd/director.js
+@@ -36,6 +36,8 @@ const JUDGE_RESULT_MS = 2400;  // ラストジャッジの結果を見せる時
+ const NAV_WARN_MS = 1600;      // 「ナビに従ってください」を出す時間
+ const LEAVE_MS = 200;          // 前のカットインが右へはけて消えるまで
+ const SKIRMISH_RATE = 0.6;     // 前兆中のふだんのゲームで小競り合いを見せる割合
++// 違和感演出 (notice の iwakan。画面設計書 5-7) の長さ
++const IWAKAN_MS = { navGlitch: 900, navQuestion: 1200, noise: 900, mute: 1600, freeze: 700, invert: 420 };
+ const CUTIN_KINDS = ['cutin', 'heaven'];   // 重ねるカットイン (必殺技のカットインは v.spCut)
+ 
+ // 特化ゾーンのパターンは、前に選んだほうを最初に選んでおく (このブラウザに覚えておく)
+@@ -96,6 +98,9 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+         navWarn: null,     // 押し順ナビとちがう押し順で押したときの警告: { since }
+         spCut: null,       // 必殺技のカットイン: { who, name, side, since }
+         talk: null,        // 敵のセリフの吹き出し: { who, line, since }
++        iwakan: null,      // 違和感演出 (液晶に出すもの): { type, since, until, frozen }
++        navOdd: null,      // 違和感演出 (押し順ナビ): { type: 'glitch' | 'question', until }
++        muteUntil: 0,      // 違和感演出 (無音): この時刻まで BGM を止める
+         at: null,
+         direct: null,
+         tenjo: null,
+@@ -126,6 +131,71 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+         changed();
+     }
+ 
++    // ----- 違和感演出 (2026-10-21 ユーザー指定。画面設計書 5-7) -----
++    // 出すかどうか・どれを出すかは内部処理の notice (iwakan)。ここは見せ方だけ
++    function iwakan(type) {
++        const dur = IWAKAN_MS[type] || 600;
++        if (type === 'navGlitch' || type === 'navQuestion') {
++            v.navOdd = { type: type === 'navGlitch' ? 'glitch' : 'question', until: now + dur };
++            sound.play('glitch');
++            // リールの上のナビを描きかえる (乱れているあいだは何度も)
++            for (let ms = 0; ms <= dur; ms += 90) after(ms, changed);
++            after(dur + 20, changed);
++        } else if (type === 'mute') {
++            v.muteUntil = now + dur;
++        } else if (type === 'button') {
++            ['red', 'blue', 'gold', 'white'].forEach((c, i) => after(i * 110, () => setButton(c)));
++            after(480, () => setButton('white', { lit: false }));
++        } else if (type === 'lever') {
++            sound.play('leverOdd');
++        } else {
++            v.iwakan = { type, since: now, until: now + dur, frozen: null };
++            if (type === 'noise') sound.play('noise');
++            if (type === 'freeze' || type === 'invert') sound.play('glitch');
++        }
++    }
++
++    // 液晶の違和感 (ノイズ・停止・反転)。画面をぜんぶ描いたあとに重ねる
++    function drawIwakan(ctx, t) {
++        const w = v.iwakan;
++        if (!w) return;
++        if (t > w.until) {
++            v.iwakan = null;
++            return;
++        }
++        const k = t - w.since;
++        if (w.type === 'noise') {
++            ctx.save();
++            const rnd = Math.random;
++            for (let i = 0; i < 14; i++) rect(ctx, 0, rnd() * H, W, 1 + rnd() * 3, `rgba(255,255,255,${0.1 + rnd() * 0.35})`);
++            for (let i = 0; i < 160; i++) rect(ctx, rnd() * W, rnd() * H, 1, 1, rnd() < 0.5 ? '#ffffff' : '#000000');
++            // 横にずれる帯
++            const y = rnd() * H;
++            ctx.drawImage(ctx.canvas, 0, y * (ctx.canvas.height / H), ctx.canvas.width, 12 * (ctx.canvas.height / H), (rnd() - 0.5) * 16, y, W, 12);
++            ctx.restore();
++        } else if (w.type === 'freeze') {
++            // 止まった瞬間の絵をとっておいて、そのあいだはそれを出しつづける
++            if (!w.frozen) {
++                w.frozen = document.createElement('canvas');
++                w.frozen.width = ctx.canvas.width;
++                w.frozen.height = ctx.canvas.height;
++                w.frozen.getContext('2d').drawImage(ctx.canvas, 0, 0);
++            }
++            ctx.save();
++            ctx.setTransform(1, 0, 0, 1, 0, 0);
++            ctx.drawImage(w.frozen, 0, 0);
++            ctx.restore();
++        } else if (w.type === 'invert') {
++            // 色の反転を2回チカッと
++            if (k < 120 || (k > 240 && k < 360)) {
++                ctx.save();
++                ctx.globalCompositeOperation = 'difference';
++                rect(ctx, 0, 0, W, H, '#ffffff');
++                ctx.restore();
++            }
++        }
++    }
++
+     // ----- カットインの入れかわり (2026-10-21 ユーザー指定) -----
+     // 新しいカットインを出すとき、前のカットインが残っていたら、右へすばやくはけさせて消す
+     function clearCutins() {
+@@ -379,6 +449,8 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+             } else if (e.kind === 'flash') {
+                 overlay('flash', 700, { level: e.level });
+                 sound.play(e.level === 'rainbow' ? 'flashRainbow' : e.level === 'big' ? 'flashBig' : 'flashSmall');
++            } else if (e.kind === 'iwakan') {
++                iwakan(e.effect);
+             } else if (e.kind === 'kakutei') {
+                 sound.play('kakutei');
+                 setButton('rainbow', { pop: true });
+@@ -803,6 +875,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+     }
+ 
+     function bgmFor() {
++        if (now < v.muteUntil) return null;   // 違和感演出 (無音)
+         if (v.bonusEnd) return v.bonusEnd.at || v.bonusEnd.stock ? 'bonus' : null;
+         // 画面設計書 7-2: BIG 豪華な曲 / REG 短い明るい曲 / エピソードBIG しっとりした曲
+         if (v.phase === 'bonus' && v.bonus) return { big: 'bonus', reg: 'reg', epbig: 'epbig' }[v.bonus.bonus];
+@@ -881,7 +954,10 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+             } else if (v.zencho) {
+                 drawMiddle(ctx, t, v.zencho);
+                 atBadge(ctx, v.at.left);
+-            } else drawAtMain(ctx, t, v.at);
++            } else {
++                v.at.navOdd = v.navOdd && v.navOdd.until > t ? v.navOdd.type : null;
++                drawAtMain(ctx, t, v.at);
++            }
+             if (v.atCount && !v.attack) drawAtCount(ctx, t, t - v.atCount.since, v.atCount.left);
+             if (v.atStart) drawAtStart(ctx, t, t - v.atStart.since, v.atStart.games);
+         }
+@@ -939,6 +1015,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+             rect(ctx, 0, 104, W, 2, '#ff3a3a');
+             text(ctx, '⚠ ナビに従ってください', W / 2, 84, { size: 18, color: '#ffffff', lw: 4, stroke: '#3a0008' });
+         }
++        drawIwakan(ctx, t);
+         if (v.banner) {
+             rect(ctx, 0, 70, W, 40, 'rgba(0,0,0,.75)');
+             text(ctx, v.banner.text, W / 2, 90, { size: 16, color: v.banner.rainbow ? rainbow(ctx, 60, 0, 260, 0) : '#ffffff', lw: 4 });
+@@ -947,7 +1024,8 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+     }
+ 
+     function snapshot() {
+-        return { button: v.button, nav: v.nav, credit: v.credit, lastPayout: v.lastPayout, phase: v.phase, waitingPush: Boolean(hold && hold.push), selecting: Boolean(hold && hold.push === 'select') };
++        const navOdd = v.navOdd && v.navOdd.until > now ? v.navOdd.type : null;
++        return { button: v.button, nav: v.nav, navOdd, credit: v.credit, lastPayout: v.lastPayout, phase: v.phase, waitingPush: Boolean(hold && hold.push), selecting: Boolean(hold && hold.push === 'select') };
+     }
+ 
+     return {
+diff --git a/src/presentation/sound/sound.js b/src/presentation/sound/sound.js
+index f1a1c32..2229b26 100644
+--- a/src/presentation/sound/sound.js
++++ b/src/presentation/sound/sound.js
+@@ -90,6 +90,9 @@ const SOUNDS = {
+     blackout: () => tone(110, 0, 0.8, { slideTo: 40, volume: 0.1, type: 'sawtooth' }),
+     fanfare: () => [784, 784, 784, 1047, 988, 1047, 1319].forEach((f, i) => tone(f, i * 0.12, 0.22, { volume: 0.08 })),
+     count: () => tone(880, 0, 0.12, { volume: 0.06 }),
++    // 違和感演出: ジジッという乱れの音 / 低く鈍いレバー音
++    glitch: () => { noise(0, 0.12, 0.08); tone(1200, 0.02, 0.06, { slideTo: 300, volume: 0.05, type: 'square' }); },
++    leverOdd: () => tone(90, 0, 0.35, { slideTo: 60, volume: 0.12, type: 'sawtooth' }),
+     // 押し順ナビとちがう押し順の警告 (低いブザーを2回)
+     warn: () => [0, 0.2].forEach(s => tone(196, s, 0.15, { volume: 0.09, type: 'square' })),
+     // 「こおりを狙え」: テンパイ (あおる音) / こおりくん揃い / AT確定 (専用の当たり音。声の代わり。画面設計書 7-2)
+diff --git a/src/presentation/styles.css b/src/presentation/styles.css
+index 9685dd6..c613417 100644
+--- a/src/presentation/styles.css
++++ b/src/presentation/styles.css
+@@ -135,6 +135,8 @@ body {
+     border: 2px solid #fff;
+ }
+ .nav-num.first { background: #ff3a3a; animation: nav-blink .5s ease-in-out infinite alternate; }
++.nav-num.odd { background: #5a1a6a; border-color: #ff6aff; animation: nav-odd .09s steps(2) infinite; }
++@keyframes nav-odd { 50% { transform: translateX(2px) skewX(-8deg); filter: hue-rotate(90deg); } }
+ .nav-num.done { background: #1a2230; border-color: #3a4656; color: #6a7686; }
+ @keyframes nav-blink { to { box-shadow: 0 0 12px #ff3a3a; filter: brightness(1.25); } }
+ .nav-num.off { background: #111820; border-color: #1e2833; }

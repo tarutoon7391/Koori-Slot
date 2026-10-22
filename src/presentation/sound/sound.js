@@ -90,6 +90,9 @@ const SOUNDS = {
     blackout: () => tone(110, 0, 0.8, { slideTo: 40, volume: 0.1, type: 'sawtooth' }),
     fanfare: () => [784, 784, 784, 1047, 988, 1047, 1319].forEach((f, i) => tone(f, i * 0.12, 0.22, { volume: 0.08 })),
     count: () => tone(880, 0, 0.12, { volume: 0.06 }),
+    // 違和感演出: ジジッという乱れの音 / 低く鈍いレバー音
+    glitch: () => { noise(0, 0.12, 0.08); tone(1200, 0.02, 0.06, { slideTo: 300, volume: 0.05, type: 'square' }); },
+    leverOdd: () => tone(90, 0, 0.35, { slideTo: 60, volume: 0.12, type: 'sawtooth' }),
     // 押し順ナビとちがう押し順の警告 (低いブザーを2回)
     warn: () => [0, 0.2].forEach(s => tone(196, s, 0.15, { volume: 0.09, type: 'square' })),
     // 「こおりを狙え」: テンパイ (あおる音) / こおりくん揃い / AT確定 (専用の当たり音。声の代わり。画面設計書 7-2)

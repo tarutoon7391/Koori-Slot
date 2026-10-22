@@ -38,7 +38,7 @@ function Lcd({ game }) {
     return <canvas ref={ref} className="lcd" aria-label="液晶" onPointerDown={onPointerDown} />;
 }
 
-function Reels({ game, nav, stopped }) {
+function Reels({ game, nav, navOdd, stopped }) {
     const ref = useRef(null);
     useEffect(() => {
         game.reels.attach(ref.current);
@@ -61,8 +61,9 @@ function Reels({ game, nav, stopped }) {
         <div className="reel-box">
             <div className="nav" aria-live="polite">
                 {[0, 1, 2].map(i => (
-                    <span key={i} className={navClass(i)}>
-                        {order ? order[i] : ''}
+                    <span key={i} className={navOdd && order ? `${navClass(i)} odd` : navClass(i)}>
+                        {/* 違和感演出: ナビの数字が乱れる / 「？」になる */}
+                        {order ? (navOdd === 'question' ? '?' : navOdd === 'glitch' ? 1 + Math.floor(Math.random() * 3) : order[i]) : ''}
                     </span>
                 ))}
             </div>
@@ -107,7 +108,7 @@ export default function Cabinet({ game }) {
             <div className="lcd-frame">
                 <Lcd game={game} />
             </div>
-            <Reels game={game} nav={d.nav} stopped={stopped} />
+            <Reels game={game} nav={d.nav} navOdd={d.navOdd} stopped={stopped} />
             <div className="leds">
                 <span>CREDIT <b>{d.credit}</b></span>
                 <span>PAYOUT <b>{d.lastPayout}</b></span>

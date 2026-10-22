@@ -135,6 +135,8 @@ body {
     border: 2px solid #fff;
 }
 .nav-num.first { background: #ff3a3a; animation: nav-blink .5s ease-in-out infinite alternate; }
+.nav-num.odd { background: #5a1a6a; border-color: #ff6aff; animation: nav-odd .09s steps(2) infinite; }
+@keyframes nav-odd { 50% { transform: translateX(2px) skewX(-8deg); filter: hue-rotate(90deg); } }
 .nav-num.done { background: #1a2230; border-color: #3a4656; color: #6a7686; }
 @keyframes nav-blink { to { box-shadow: 0 0 12px #ff3a3a; filter: brightness(1.25); } }
 .nav-num.off { background: #111820; border-color: #1e2833; }
