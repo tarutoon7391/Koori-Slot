@@ -3,16 +3,20 @@
 // ---------------------------------------------------------------------
 // 当選したときのフリーズ風の「特化ゾーン ストック！」/ パターンを選ぶ画面 /
 // 魔王の褒美 (3G 終わってから宝箱で結果をまとめて出す。継続確定なら虹フラッシュ) /
-// こおり大腸炎 (1G ごとに上乗せを出す。継続確定なら炎とこおりくんが虹色になって「確定」) / 復活！ / 終了。
+// こおり大腸炎 (1G ごとに上乗せを出す。継続確定なら炎とこおりくんが虹色になって「確定」) /
+// おかランプ (踊るおかがっぱの頭のランプが、リプレイ以上を引いたらレバーの瞬間に真っ赤に点灯。100G 以上は 25% で虹色) / 復活！ / 終了。
 // どの場面を出すかは director.js が決め、ここは描くだけ。t・since はミリ秒。
 // =====================================================================
 
 import { BODY, H, RAINBOW, W, ch, plusGames, rainbow, rays, rect, room, roundRect, seeded, text, vgrad } from './kit.js';
 
 export const PATTERNS = {
-    maou: { name: '魔王の褒美', note: '3G 終わってから まとめて結果' },
-    daichoen: { name: 'こおり大腸炎', note: '1G ごとに上乗せ' }
+    maou: { name: '魔王の褒美', note: '3G まとめて結果', color: '#ff9a6a' },
+    okaLamp: { name: 'おかランプ', note: 'ランプが光れば当たり', color: '#ff5a5a' },
+    daichoen: { name: 'こおり大腸炎', note: '1G ごとに上乗せ', color: '#ffb040' }
 };
+// 選ぶ画面の並び (左・中・右の停止ボタンに対応)
+export const PATTERN_ORDER = ['maou', 'okaLamp', 'daichoen'];
 
 const frameOf = (t, ms = 320) => Math.floor(t / ms) % 2;
 const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
@@ -50,35 +54,40 @@ export function drawTokkaStock(ctx, t, since, stock) {
 }
 
 // ----- パターンを選ぶ画面 -----
-// choice: 'maou' | 'daichoen' / left: 残りミリ秒
+// choice: 'maou' | 'okaLamp' | 'daichoen' / left: 残りミリ秒
 export function drawTokkaSelect(ctx, t, choice, left) {
     rect(ctx, 0, 0, W, H, vgrad(ctx, 0, H, ['#14081e', '#2a0a2a', '#0a0410']));
     text(ctx, '特化ゾーンの演出を選んでね', W / 2, 16, { size: 13, color: '#ffffff', lw: 3 });
-    const panels = [['maou', 12], ['daichoen', 166]];
-    panels.forEach(([id, x]) => {
+    PATTERN_ORDER.forEach((id, i) => {
+        const x = 6 + i * 104;
         const on = id === choice;
         const y = on ? 30 : 34;
-        roundRect(ctx, x, y, 142, 112, 6, on ? 'rgba(60,20,40,.95)' : 'rgba(20,10,20,.8)', on ? '#ffd23a' : '#5a4a5a');
+        const w = 100;
+        roundRect(ctx, x, y, w, 112, 6, on ? 'rgba(60,20,40,.95)' : 'rgba(20,10,20,.8)', on ? '#ffd23a' : '#5a4a5a');
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x + 4, y + 4, 134, 78);
+        ctx.rect(x + 4, y + 4, w - 8, 78);
         ctx.clip();
         if (id === 'maou') {
-            rect(ctx, x + 4, y + 4, 134, 78, vgrad(ctx, y, y + 82, ['#1a0000', '#5a0a00']));
-            ch(ctx, 'maou', x + 96, y + 82, { scale: 1.1, frame: frameOf(t, 700) });
-            drawChest(ctx, x + 34, y + 76, 1, false);
+            rect(ctx, x + 4, y + 4, w - 8, 78, vgrad(ctx, y, y + 82, ['#1a0000', '#5a0a00']));
+            ch(ctx, 'maou', x + 66, y + 82, { scale: 1, frame: frameOf(t, 700) });
+            drawChest(ctx, x + 24, y + 76, 0.9, false);
+        } else if (id === 'okaLamp') {
+            rect(ctx, x + 4, y + 4, w - 8, 78, vgrad(ctx, y, y + 82, ['#10061e', '#3a0a3a']));
+            drawDanceFloor(ctx, t, x + 4, y + 60, w - 8, 22);
+            drawOkagappaLamp(ctx, t, x + w / 2, y + 80, 1.5, frameOf(t, 600) ? 'red' : null);
         } else {
-            rect(ctx, x + 4, y + 4, 134, 78, vgrad(ctx, y, y + 82, ['#3a1000', '#a03a00']));
-            drawFlames(ctx, t, x + 71, y + 80, 0.8, false);
-            ch(ctx, 'koori', x + 71, y + 78, { scale: 2.6, frame: frameOf(t, 160) });
+            rect(ctx, x + 4, y + 4, w - 8, 78, vgrad(ctx, y, y + 82, ['#3a1000', '#a03a00']));
+            drawFlames(ctx, t, x + w / 2, y + 80, 0.6, false);
+            ch(ctx, 'koori', x + w / 2, y + 78, { scale: 2.3, frame: frameOf(t, 160) });
         }
         ctx.restore();
-        if (!on) rect(ctx, x, y, 142, 112, 'rgba(0,0,0,.45)');
-        text(ctx, PATTERNS[id].name, x + 71, y + 94, { size: 14, color: on ? '#ffe680' : '#a89aa8', lw: 3 });
-        text(ctx, PATTERNS[id].note, x + 71, y + 107, { size: 8, color: on ? '#ffffff' : '#8a7a8a', stroke: null, font: BODY });
+        if (!on) rect(ctx, x, y, w, 112, 'rgba(0,0,0,.45)');
+        text(ctx, PATTERNS[id].name, x + w / 2, y + 94, { size: PATTERNS[id].name.length > 5 ? 11 : 13, color: on ? '#ffe680' : '#a89aa8', lw: 3 });
+        text(ctx, PATTERNS[id].note, x + w / 2, y + 107, { size: 7.5, color: on ? '#ffffff' : '#8a7a8a', stroke: null, font: BODY });
     });
     const sec = Math.ceil(left / 1000);
-    text(ctx, `左・右の停止ボタンか、画面のタップで選んで  PUSH で決定（あと${sec}秒）`, W / 2, 160, { size: 8, color: frameOf(t, 500) ? '#ffffff' : '#ffd0e0', stroke: null, font: BODY });
+    text(ctx, `左・中・右の停止ボタンか、画面のタップで選んで  PUSH で決定（あと${sec}秒）`, W / 2, 160, { size: 8, color: frameOf(t, 500) ? '#ffffff' : '#ffd0e0', stroke: null, font: BODY });
     text(ctx, '上乗せや継続のしやすさは同じだよ', W / 2, 172, { size: 8, color: '#a89aa8', stroke: null, font: BODY });
 }
 
@@ -88,11 +97,11 @@ export function drawTokkaIntro(ctx, t, since, pattern, setGames = 3) {
     const a = since > INTRO_MS - 300 ? 1 - (since - INTRO_MS + 300) / 300 : 1;
     ctx.save();
     ctx.globalAlpha = a;
-    rect(ctx, 0, 0, W, H, pattern === 'maou' ? '#1a0000' : '#3a1000');
-    spinRays(ctx, t, W / 2, 90, pattern === 'maou' ? ['#ff6a20', 'rgba(0,0,0,0)'] : ['#ffb040', 'rgba(0,0,0,0)'], 30, 0.4, 1500);
+    rect(ctx, 0, 0, W, H, pattern === 'maou' ? '#1a0000' : pattern === 'okaLamp' ? '#14061e' : '#3a1000');
+    spinRays(ctx, t, W / 2, 90, [pattern === 'maou' ? '#ff6a20' : pattern === 'okaLamp' ? '#ff3a6a' : '#ffb040', 'rgba(0,0,0,0)'], 30, 0.4, 1500);
     const pop = 1 + Math.max(0, 0.5 - since / 300);
     text(ctx, PATTERNS[pattern].name, W / 2, 76, { size: 30 * pop, color: vgrad(ctx, 60, 92, ['#fff6b0', '#ffd23a', '#c88a10']), lw: 7, stroke: '#3a0a00' });
-    if (since > 400) text(ctx, `1セット ${setGames}G  リプレイ以上で継続！`, W / 2, 116, { size: 12, color: '#ffffff', lw: 4, stroke: '#3a0a00' });
+    if (since > 400) text(ctx, pattern === 'okaLamp' ? 'ランプが光ればリプレイ以上！' : `1セット ${setGames}G  リプレイ以上で継続！`, W / 2, 116, { size: 12, color: '#ffffff', lw: 4, stroke: '#3a0a00' });
     ctx.restore();
 }
 
@@ -142,7 +151,7 @@ function drawFlames(ctx, t, cx, ground, scale = 1, rainbowFire = false) {
 // ----- 上の帯 -----
 function tokkaBar(ctx, z, total) {
     rect(ctx, 0, 0, W, 20, 'rgba(0,0,0,.6)');
-    text(ctx, PATTERNS[z.pattern].name, 8, 10.5, { size: 11, align: 'left', color: z.pattern === 'maou' ? '#ff9a6a' : '#ffb040', stroke: null });
+    text(ctx, PATTERNS[z.pattern].name, 8, 10.5, { size: 11, align: 'left', color: PATTERNS[z.pattern].color, stroke: null });
     text(ctx, `SET ${z.set}`, 140, 10.5, { size: 11, color: '#ffffff', stroke: null });
     text(ctx, `${z.games.length}/3G`, 180, 10.5, { size: 9, color: '#c8c8d8', stroke: null, font: BODY });
     plusGames(ctx, `+${total}G`, W - 40, 10.5, 13);
@@ -154,6 +163,7 @@ function tokkaBar(ctx, z, total) {
 export const OPEN_STEP_MS = 500;
 export function drawTokka(ctx, t, z) {
     if (z.pattern === 'maou') drawMaou(ctx, t, z);
+    else if (z.pattern === 'okaLamp') drawOkaLamp(ctx, t, z);
     else drawDaichoen(ctx, t, z);
     tokkaBar(ctx, z, z.shownTotal);
     if (z.phase === 'result') drawSetResult(ctx, t, t - z.since, z.result);
@@ -233,6 +243,136 @@ function drawDaichoen(ctx, t, z) {
         }
     }
     if (sure) text(ctx, `継続確定 ×${z.guarantee}`, 70, 120, { size: 10, color: rainbow(ctx, 20, 0, 120, 0), lw: 3 });
+}
+
+// ----- おかランプ (2026-10-21 ユーザー指定) -----
+// 踊り続けるおかがっぱの頭のランプが、リプレイ以上を引いたゲームのレバーの瞬間に真っ赤に点灯する。
+// 100G 以上の上乗せのゲームも点灯し、25% で虹色に光る (3桁の上乗せの告知)。z.lamp: { color: 'red' | 'rainbow', at } | null
+
+// ダンスフロア (色の変わるタイル)
+function drawDanceFloor(ctx, t, x, y, w, h) {
+    const cols = ['#ff3a8a', '#3a8aff', '#ffd23a', '#3aff9a', '#a03aff'];
+    const size = 14;
+    for (let ix = 0; ix * size < w; ix++) {
+        for (let iy = 0; iy * size / 2 < h; iy++) {
+            const c = cols[(ix + iy + Math.floor(t / 250)) % cols.length];
+            ctx.save();
+            ctx.globalAlpha = (ix + iy) % 2 ? 0.7 : 0.35;
+            rect(ctx, x + ix * size, y + iy * size / 2, size - 1, size / 2 - 1, c);
+            ctx.restore();
+        }
+    }
+}
+
+// ランプ (台座とガラスの丸)。color: null (消えている) / 'red' / 'rainbow'
+function drawLamp(ctx, t, x, y, s, color, litSince = 99999) {
+    // 光っているときの光の輪
+    if (color) {
+        ctx.save();
+        const pulse = 0.55 + Math.sin(t / 90) * 0.15;
+        ctx.globalAlpha = pulse;
+        const g = ctx.createRadialGradient(x, y - 7 * s, 2, x, y - 7 * s, 30 * s);
+        g.addColorStop(0, color === 'rainbow' ? '#ffffff' : '#ff8080');
+        g.addColorStop(1, 'rgba(255,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y - 7 * s, 30 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+    // 台座
+    rect(ctx, x - 7 * s, y - 3 * s, 14 * s, 3 * s, '#3a3a44');
+    rect(ctx, x - 6 * s, y - 4 * s, 12 * s, 1 * s, '#6a6a7a');
+    // ガラスの丸 (下が四角い電球の形)
+    const glass = !color ? '#5a1418' : color === 'red' ? '#ff2a2a' : rainbow(ctx, x - 8 * s + ((t / 6) % (16 * s)), 0, x + 8 * s + ((t / 6) % (16 * s)), 0);
+    ctx.fillStyle = glass;
+    ctx.beginPath();
+    ctx.arc(x, y - 10 * s, 6 * s, Math.PI, 0);
+    ctx.lineTo(x + 6 * s, y - 4 * s);
+    ctx.lineTo(x - 6 * s, y - 4 * s);
+    ctx.closePath();
+    ctx.fill();
+    // つや
+    rect(ctx, x - 4 * s, y - 13 * s, 2 * s, 4 * s, color ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.25)');
+    // 点いた瞬間のはじける光
+    if (color && litSince < 400) {
+        const k = litSince / 400;
+        ctx.save();
+        ctx.globalAlpha = 1 - k;
+        ctx.strokeStyle = color === 'rainbow' ? '#ffffff' : '#ff6060';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y - 8 * s, 8 * s + k * 40, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+// ランプをのせて踊るおかがっぱ。(x, ground) は足もと
+function drawOkagappaLamp(ctx, t, x, ground, scale, lamp, litSince) {
+    const beat = t / 300;
+    const bob = Math.abs(Math.sin(beat * Math.PI)) * 4 * scale / 2.6;
+    const sway = Math.sin(beat * Math.PI / 2) * 6 * scale / 2.6;
+    const flip = Math.floor(beat / 2) % 2 === 1;
+    const gx = x + sway, gy = ground - bob;
+    ch(ctx, 'okagappa', gx, gy, { scale, flip, frame: Math.floor(beat) % 2 });
+    // 頭の皿の上にランプ (おかがっぱの絵は 32x40 ドット。皿は上から1ドットめ)
+    drawLamp(ctx, t, gx, gy - 40 * scale + 2 * scale, scale * 0.9, lamp, litSince);
+}
+
+function drawOkaLamp(ctx, t, z) {
+    const lamp = z.lamp && z.lamp.color;
+    // 背景: 暗いクラブ。ランプが光ると部屋も赤く (虹)
+    rect(ctx, 0, 0, W, H, vgrad(ctx, 0, H, ['#0a0418', '#2a0a3a', '#10061e']));
+    // スポットライト
+    [['#ff3a8a', 60], ['#3a8aff', 160], ['#ffd23a', 260]].forEach(([c, x0], i) => {
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        const sx = x0 + Math.sin(t / 700 + i * 2) * 50;
+        ctx.moveTo(x0, 0);
+        ctx.lineTo(sx - 30, 150);
+        ctx.lineTo(sx + 30, 150);
+        ctx.fill();
+        ctx.restore();
+    });
+    // ミラーボール
+    const bx = 34, by = 40;
+    rect(ctx, bx - 1, 20, 2, by - 30, '#6a6a7a');
+    ctx.fillStyle = '#c8d0e0';
+    ctx.beginPath();
+    ctx.arc(bx, by, 10, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 8; i++) rect(ctx, bx - 8 + ((i * 5 + Math.floor(t / 120)) % 16), by - 6 + (i % 3) * 5, 2, 2, '#ffffff');
+    drawDanceFloor(ctx, t, 0, 140, W, 40);
+    if (lamp) {
+        ctx.save();
+        ctx.globalAlpha = 0.18 + Math.sin(t / 90) * 0.06;
+        rect(ctx, 0, 0, W, H, lamp === 'rainbow' ? rainbow(ctx, 0, 0, W, H) : '#ff0000');
+        ctx.restore();
+        spinRays(ctx, t, W / 2, 60, lamp === 'rainbow' ? RAINBOW : ['#ff4040', 'rgba(0,0,0,0)'], 24, 0.2, 1500);
+    }
+    drawOkagappaLamp(ctx, t, W / 2, 152, 2.1, lamp, z.lamp ? t - z.lamp.at : 99999);
+    // 点いた瞬間の文字
+    if (z.lamp && t - z.lamp.at < 1200) {
+        const k = t - z.lamp.at;
+        const pop = 1 + Math.max(0, 0.5 - k / 300);
+        text(ctx, lamp === 'rainbow' ? 'ピカーッ！！' : 'ピカッ！', 70, 70, { size: 20 * pop, color: lamp === 'rainbow' ? rainbow(ctx, 20, 0, 120, 0) : '#ff5050', lw: 5, stroke: '#2a0008' });
+    }
+    if (!lamp) text(ctx, 'おかピポ♪ おかピポ♪', 70, 74, { size: 10, color: '#e0d0ff', lw: 3, stroke: '#2a0a3a' });
+    // このゲームの上乗せ (リールが止まってから。+5G は小さい文字だけ)
+    if (z.pop) {
+        const since = t - z.pop.at;
+        if (since < 1400) {
+            ctx.save();
+            ctx.globalAlpha = 1 - Math.max(0, (since - 1000) / 400);
+            if (z.pop.add <= 5) text(ctx, `+${z.pop.add}G`, 252, 70 - ease(since / 300) * 8, { size: 14, color: '#ffffff', lw: 4, stroke: '#2a0a3a' });
+            else plusGames(ctx, `+${z.pop.add}G`, 246, 66 - ease(since / 300) * 8, z.pop.add >= 100 ? 34 : 26);
+            ctx.restore();
+        }
+    }
+    if (z.guarantee > 0) text(ctx, `継続確定 ×${z.guarantee}`, 70, 120, { size: 10, color: rainbow(ctx, 20, 0, 120, 0), lw: 3 });
 }
 
 // ----- セットの結果: 継続！ / 復活！ / 終了 -----

@@ -35,12 +35,16 @@ const JUDGE_RESULT_MS = 2400;  // ラストジャッジの結果を見せる時�
 const NAV_WARN_MS = 1600;      // 「ナビに従ってください」を出す時間
 
 const LEAVE_MS = 200;          // 前のカットインが右へはけて消えるまで
+const OKA_RAINBOW_RATE = 0.25; // おかランプ: 100G 以上の上乗せでランプが虹色に光る割合
 const CUTIN_KINDS = ['cutin', 'heaven'];   // 重ねるカットイン (必殺技のカットインは v.spCut)
 // 違和感演出 (notice の iwakan。画面設計書 5-7) の長さ
 const IWAKAN_MS = { navGlitch: 900, navQuestion: 1200, noise: 900, mute: 1600, freeze: 700, invert: 420 };
 // 特化ゾーンのパターンは、前に選んだほうを最初に選んでおく (このブラウザに覚えておく)
 function savedPattern() {
-    try { return localStorage.getItem('koori-slot-tokka') === 'daichoen' ? 'daichoen' : 'maou'; } catch (e) { return 'maou'; }
+    try {
+        const id = localStorage.getItem('koori-slot-tokka');
+        return ['maou', 'okaLamp', 'daichoen'].includes(id) ? id : 'maou';
+    } catch (e) { return 'maou'; }
 }
 function savePattern(id) {
     try { localStorage.setItem('koori-slot-tokka', id); } catch (e) { /* 保存できない環境 */ }
@@ -752,7 +756,20 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         },
 
         [E.TOKKA_GAME](e) {
-            if (v.tokka) v.tokka.pending = { ...e };
+            const z = v.tokka;
+            if (!z) return;
+            z.pending = { ...e };
+            // おかランプ: リプレイ以上を引いたゲームは、レバーの瞬間にランプが真っ赤に点灯。
+            // 100G 以上の上乗せも点灯し、25% で虹色 (3桁の上乗せの告知。2026-10-21 ユーザー指定)
+            if (z.pattern === 'okaLamp') {
+                const big = e.add >= 100;
+                const color = big && Math.random() < OKA_RAINBOW_RATE ? 'rainbow' : e.hit || big ? 'red' : null;
+                z.lamp = color ? { color, at: now } : null;
+                if (color) {
+                    sound.play(color === 'rainbow' ? 'flashRainbow' : 'lamp');
+                    setButton(color === 'rainbow' ? 'rainbow' : 'red', { pop: color === 'rainbow' });
+                }
+            }
             // 内部処理 v0.3: 特化ゾーン中の押し順ベルのナビ (docs/events.md)。AT 中と同じく筐体のナビに出す (要確認)
             v.nav = e.nav || null;
             changed();
@@ -860,7 +877,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         if (v.phase === 'bonus' || v.phase === 'standby') return 'bonus';
         if (v.atEnd) return 'atEnd';
         // 画面設計書 7-2: 魔王の褒美 不気味で豪華な曲 / こおり大腸炎 ドタバタした曲
-        if (v.tokka && v.tokka.pattern && !v.tokkaEnd) return v.tokka.pattern === 'maou' ? 'tokkaMaou' : 'tokkaDaichoen';
+        if (v.tokka && v.tokka.pattern && !v.tokkaEnd) return { maou: 'tokkaMaou', okaLamp: 'tokkaOkaLamp', daichoen: 'tokkaDaichoen' }[v.tokka.pattern];
         if (v.phase === 'at' && v.zencho) return 'zencho';
         if (v.phase === 'at') return 'at';
         if (v.zencho) return 'zencho';
@@ -1053,9 +1070,10 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             return false;
         },
         // 特化ゾーンのパターンを選ぶ。side: 'left' (魔王の褒美) / 'right' (こおり大腸炎)
+        // side: 'left' (魔王の褒美) / 'middle' (おかランプ) / 'right' (こおり大腸炎)
         select(side) {
             if (!(hold && hold.push === 'select')) return false;
-            const next = side === 'left' ? 'maou' : 'daichoen';
+            const next = { left: 'maou', middle: 'okaLamp', right: 'daichoen' }[side] || 'maou';
             if (v.tokka.choice !== next) sound.play('stop');
             v.tokka.choice = next;
             return true;

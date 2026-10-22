@@ -1,0 +1,38 @@
+diff --git a/src/logic/events.js b/src/logic/events.js
+index 42e1684..666d27b 100644
+--- a/src/logic/events.js
++++ b/src/logic/events.js
+@@ -43,7 +43,7 @@ export const EVENTS = {
+     // ----- 上乗せ特化ゾーン -----
+     TOKKA_STOCK: 'tokka:stock',   // { stock }  特化ゾーンに当たった (当たったゲームの終わり)
+     TOKKA_START: 'tokka:start',   // { stock }  特化ゾーンが始まる (次のレバーから)
+-    TOKKA_GAME: 'tokka:game',     // { set, game, add, guarantee }  特化ゾーンの1ゲーム (レバーのとき)
++    TOKKA_GAME: 'tokka:game',     // { set, game, add, guarantee, hit }  hit: リプレイ以上を引いた (自力継続の条件)  特化ゾーンの1ゲーム (レバーのとき)
+     TOKKA_SET: 'tokka:set',       // { set, cont, revive }  セットの終わり
+     TOKKA_END: 'tokka:end'        // { total, sets, left }  特化ゾーンの終わり
+ };
+diff --git a/src/logic/machine.js b/src/logic/machine.js
+index bfd1492..f886d72 100644
+--- a/src/logic/machine.js
++++ b/src/logic/machine.js
+@@ -509,7 +509,7 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+         t.guarantee += cfg.guarantee[role] || 0;
+         // 特化ゾーン中も、レア役で特化ゾーンを抽選する (終わったら続けて始める)
+         if (RARE.includes(role) && rng.chance((cfg.rate[role] || 0) / 100)) s.tokkaWon = true;
+-        emit(E.TOKKA_GAME, { set: t.set, game: t.game, add, guarantee: t.guarantee });
++        emit(E.TOKKA_GAME, { set: t.set, game: t.game, add, guarantee: t.guarantee, hit: role === 'replay' || RARE.includes(role) });
+     }
+ 
+     // セットの終わり: 継続確定 → リプレイ以上を引いた → 継続率テーブル (復活) の順に見る
+diff --git a/tests/logic.test.js b/tests/logic.test.js
+index 50b3602..ef62568 100644
+--- a/tests/logic.test.js
++++ b/tests/logic.test.js
+@@ -127,6 +127,7 @@ test('特化ゾーン (仮組): ストック → 始まり → 3G ずつのセ
+         const sets = inside.filter(e => e.type === EVENTS.TOKKA_SET);
+         assert.equal(games.length, sets.length * 3, '1セット3G');
+         assert.ok(games.every(g => g.add >= 5), '毎ゲーム 5G 以上');
++        assert.ok(games.every(g => typeof g.hit === 'boolean'), 'hit (リプレイ以上を引いた) がある');
+         assert.ok(sets.slice(0, -1).every(x => x.cont) && !sets[sets.length - 1].cont, '最後のセットだけ続かない');
+         const total = games.reduce((a, g) => a + g.add, 0);
+         assert.equal(log[end].total, total);

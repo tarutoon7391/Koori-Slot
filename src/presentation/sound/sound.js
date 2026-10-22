@@ -90,6 +90,8 @@ const SOUNDS = {
     blackout: () => tone(110, 0, 0.8, { slideTo: 40, volume: 0.1, type: 'sawtooth' }),
     fanfare: () => [784, 784, 784, 1047, 988, 1047, 1319].forEach((f, i) => tone(f, i * 0.12, 0.22, { volume: 0.08 })),
     count: () => tone(880, 0, 0.12, { volume: 0.06 }),
+    // おかランプの点灯 (ピカッ)
+    lamp: () => { tone(1568, 0, 0.12, { volume: 0.09 }); tone(2093, 0.06, 0.3, { volume: 0.08, type: 'triangle' }); },
     // 違和感演出: ジジッという乱れの音 / 低く鈍いレバー音
     glitch: () => { noise(0, 0.12, 0.08); tone(1200, 0.02, 0.06, { slideTo: 300, volume: 0.05, type: 'square' }); },
     leverOdd: () => tone(90, 0, 0.35, { slideTo: 60, volume: 0.12, type: 'sawtooth' }),

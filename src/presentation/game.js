@@ -93,7 +93,7 @@ export function createGame({ setting = 1 } = {}) {
         Sound.unlock();
         // 特化ゾーンのパターンを選んでいるあいだは、左・右の停止ボタンで選ぶ
         if (director.snapshot().selecting) {
-            if (reel !== 1) director.select(reel === 0 ? 'left' : 'right');
+            director.select(['left', 'middle', 'right'][reel]);
             notify();
             return false;
         }
@@ -149,7 +149,7 @@ export function createGame({ setting = 1 } = {}) {
     // 液晶をタップした (x: 左端 0 〜 右端 1)。特化ゾーンのパターンを選ぶときに使う
     function tapLcd(x) {
         Sound.unlock();
-        if (director.select(x < 0.5 ? 'left' : 'right')) notify();
+        if (director.select(x < 1 / 3 ? 'left' : x < 2 / 3 ? 'middle' : 'right')) notify();
     }
 
     // PUSH ボタンを離した (長押しの演出で使う)
