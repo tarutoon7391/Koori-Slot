@@ -426,8 +426,9 @@ function drawSpecial(ctx, t, scene, sayIndex, sayCount, k2) {
             text(ctx, '★', cx + Math.cos(ang) * d, cy + Math.sin(ang) * d, { size: 9, color: i % 2 ? '#ffe040' : '#ff8a20', stroke: null });
         }
     }
-    // 技の名前の帯 (斜めの帯に大きな文字)
-    const slide = ease(Math.min(1, k2 / 250));
+    // 技の名前の帯 (斜めの帯に大きな文字)。すべり込むのは技の名前が変わったときだけ
+    // (名前が1つで、セリフが2つ以上ある場面で、セリフが変わるたびに同じ技の帯が出なおさないように)
+    const slide = sayIndex < names.length ? ease(Math.min(1, k2 / 250)) : 1;
     ctx.save();
     ctx.translate((1 - slide) * -W, 0);
     ctx.beginPath();
@@ -604,9 +605,10 @@ function drawEpisode(ctx, t, b) {
     const { ep, scene, index } = episodeScene(b);
     if (b.sceneIndex !== index) {
         b.sceneIndex = index;
-        b.sceneAt = t;
+        // 最初の会話は、始まりのタイトル (ENTRY_MS) が消えてから出しはじめる (タイトルの下で文字が進んで、見えないうちに終わらないように)
+        b.sceneAt = index === 0 ? Math.max(t, b.since + ENTRY_MS) : t;
     }
-    const k = t - (b.sceneAt || t);
+    const k = Math.max(0, t - (b.sceneAt || t));
     // then があれば、セリフが出きって少したってから次の人に切りかえる (then は1つでも配列でもよい。k2 は今のセリフが出はじめてからの時間)
     const says = [scene, ...[].concat(scene.then || [])];
     let say = scene, k2 = k, sayIndex = 0;
