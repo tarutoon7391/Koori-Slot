@@ -453,7 +453,8 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
     }
 
     // 最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge): PUSH (押さなくても進む) → 激突 → 必殺技 → 勝ち負け
-    // こおりくんではなく仲間 (finisher) が飛びこんで必殺技を放ったら勝ち確定。こおりくんの技は、防がれて反撃されることもある
+    // こおりくんではなく仲間 (finisher) が飛びこんで必殺技を放つか、こおりくんが絶対殺す剣 (finisher: 'kooriKill') を放ったら勝ち確定。
+    // こおりくんのふつうの技 (大腸炎アタック) は、防がれて反撃されることもある
     function startBossJudge(e) {
         v.bossJudge = { boss: e.boss, win: e.win, finisher: e.finisher || 'koori', phase: 'intro', since: now };
         v.bossAtk = null;
@@ -472,7 +473,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         const skill = phase => () => {
             j.phase = phase;
             j.since = now;
-            j.skill = phase === 'counter' ? SKILL_KIND[j.boss] : j.finisher === 'koori' ? 'rainbowSword' : SKILL_KIND[j.finisher];
+            j.skill = phase === 'counter' ? SKILL_KIND[j.boss] : j.finisher === 'kooriKill' ? 'rainbowSword' : SKILL_KIND[j.finisher];
             after(SKILL_MS * HIT_AT, () => sound.play(phase === 'guard' ? 'guard' : 'clash'));
             wait(SKILL_MS, phase === 'guard' ? counter : done);
         };
@@ -486,7 +487,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         setButton('white', { lit: false });
         [0.18, 0.5, 0.82].forEach(k => after(DUEL_MS * k, () => sound.play('clash')));
         wait(DUEL_MS, () => {
-            if (j.finisher !== 'koori') {
+            if (j.finisher !== 'koori' && j.finisher !== 'kooriKill') {
                 // 仲間が飛びこんでくる (確定)
                 j.phase = 'enter';
                 j.since = now;
@@ -496,7 +497,13 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                 wait(ENTER_MS, () => specialCut(j.finisher, 'ally', SPECIALS[j.finisher], skill('skill')));
                 return;
             }
-            const name = (j.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name;
+            // 絶対殺す剣 (四天王絶対殺す剣 / 大魔王には大魔王絶対殺す剣) は確定: 虹色のボタンと確定音
+            const kill = j.finisher === 'kooriKill';
+            const name = kill ? (j.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name : FINISHERS.default.name;
+            if (kill) {
+                setButton('rainbow', { pop: true });
+                after(350, () => sound.play('kakutei'));
+            }
             specialCut('koori', 'ally', name, skill(j.win ? 'skill' : 'guard'));
         });
     }

@@ -44,9 +44,12 @@ const EX_MS = 620;        // ふだんの戦いの1つの攻め (飛びこむ・
 const COUNTER_MS = 2480;  // 相手が反撃する間隔
 
 // 1つの攻めの中身 (時間で決まる。期待度には関係しない)
+// 攻める人は、全員に順番が回るように 5 人おきに選ぶ (5 と人数 14 は割りきれないので、14 回で全員が1回ずつ攻める)
+// (seeded は近い種だと最初の値がほとんど同じになるので、だれが攻めるかの選び方には使わない)
 function exchange(n) {
-    const rnd = seeded(n * 7 + 3);
-    const who = CAST[Math.floor(rnd() * CAST.length)];
+    const rnd = seeded(n * 7919 + 104729);
+    rnd();
+    const who = CAST[(n * 5) % CAST.length];
     return { who, type: rnd() < 0.55 ? 'dash' : 'shot', seed: n };
 }
 
@@ -300,6 +303,7 @@ export function drawBossAttack(ctx, t, a, b) {
 
 // ----- 最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge) -----
 // j: { boss, win, finisher, phase: 'intro' | 'duel' | 'enter' | 'skill' | 'guard' | 'counter', since, skill }
+//   finisher: 'koori' (こおりくんの大腸炎アタック) / 'kooriKill' (こおりくんの絶対殺す剣。確定) / 仲間の id (確定)
 export const DUEL_MS = 1400;
 export const ENTER_MS = 1100;
 const KOORI_X = 86;
@@ -336,7 +340,8 @@ export function drawBossJudge(ctx, t, j) {
         if (step >= 0) text(ctx, '一騎打ち!!', W / 2, 24, { size: 16, color: '#ffffff', lw: 5, stroke: '#3a0008' });
         return;
     }
-    const finisher = j.finisher || 'koori';
+    // 絶対殺す剣もこおりくんが放つ (絵はこおりくん)
+    const finisher = !j.finisher || j.finisher === 'kooriKill' ? 'koori' : j.finisher;
     const ally = finisher !== 'koori';
     if (j.phase === 'enter') {
         // こおりくんではなく仲間が飛びこんでくる (確定)

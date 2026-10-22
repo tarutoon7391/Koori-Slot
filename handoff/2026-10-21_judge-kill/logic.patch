@@ -1,0 +1,93 @@
+diff --git a/src/logic/config.js b/src/logic/config.js
+index 5f7900b..f96f5eb 100644
+--- a/src/logic/config.js
++++ b/src/logic/config.js
+@@ -162,9 +162,11 @@ export const CONFIG = {
+         },
+         // AT 中のボーナスの最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge。v0.6)【仮】
+         // byJudge: 特化ゾーンに当たるボーナスのうち、ラストジャッジで勝つ割合 / allyFinish: 勝つときに仲間が必殺技を放つ割合 (確定)
++        // killFinish: 勝つときに、こおりくんが絶対殺す剣を放つ割合 (確定。v0.7)
+         bossJudge: {
+             byJudge: 0.3,
+             allyFinish: 0.45,
++            killFinish: 0.3,
+             allies: ['onioni', 'yasu', 'tamu', 'dake', 'okagappa', 'hibikimakuri', 'yamamou', 'sasaki', 'kotani', 'asahara', 'shibata', 'ikekimu', 'ueno']
+         },
+         // 設定示唆トロフィー (AT 終了画面に落ちてくる)。rate: 出る率 / weights: 出たときの色 (設定ごと)【仮: 前作の値】
+diff --git a/src/logic/events.js b/src/logic/events.js
+index f42d21f..78054fd 100644
+--- a/src/logic/events.js
++++ b/src/logic/events.js
+@@ -38,7 +38,7 @@ export const EVENTS = {
+     AT_MISS: 'at:miss',           // { attacker, enemy }  上乗せなしのレア役 (「ミス！」)
+     AT_BOSS: 'at:boss',           // { boss, final, win }  AT 中のボーナスの相手 (登場 / 勝利)
+     AT_BOSS_ATTACK: 'at:bossAttack', // { boss, move, result, color, shout }  AT 中のボーナスのレア役で、仲間が相手を攻撃する (v0.6)
+-    AT_BOSS_JUDGE: 'at:bossJudge', // { boss, win, finisher }  AT 中のボーナスの最後のゲームの一騎打ち「ラストジャッジ」(v0.6)
++    AT_BOSS_JUDGE: 'at:bossJudge', // { boss, win, finisher }  AT 中のボーナスの最後のゲームの一騎打ち「ラストジャッジ」(v0.6)。finisher: 'koori' | 'kooriKill' (絶対殺す剣。確定) | 仲間の id (確定)
+     AT_JUDGE: 'at:judge',         // { win, bonus }  前兆中に AT のゲーム数がなくなったときの当落告知
+     AT_END: 'at:end',             // { games, payout, hint, trophy }  hint: 設定示唆の画像 / trophy: 設定示唆トロフィーの色 (出ないときは null)
+ 
+diff --git a/src/logic/machine.js b/src/logic/machine.js
+index e9cb21d..6d7eb5d 100644
+--- a/src/logic/machine.js
++++ b/src/logic/machine.js
+@@ -327,11 +327,13 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+             shape = 'koori';
+             if (b.inAt) b.bossWin = true;
+         } else if (battle && !b.atWon && b.left === 1) {
+-            // ラストジャッジ: 勝つときだけ、こおりくんの代わりに仲間が必殺技を放つことがある (確定)
++            // ラストジャッジ: 勝つときだけ、こおりくんの代わりに仲間が必殺技を放つか、こおりくんが絶対殺す剣を放つことがある (どちらも確定)
+             const cfg = config.show.bossJudge;
+             const win = Boolean(b.willWin && b.winAt === 1);
+             if (win) b.atWon = true;
+-            emit(E.AT_BOSS_JUDGE, { boss: b.boss, win, finisher: win && rng.chance(cfg.allyFinish) ? rng.pick(cfg.allies) : 'koori' });
++            const r = rng.next();
++            const finisher = !win ? 'koori' : r < cfg.allyFinish ? rng.pick(cfg.allies) : r < cfg.allyFinish + cfg.killFinish ? 'kooriKill' : 'koori';
++            emit(E.AT_BOSS_JUDGE, { boss: b.boss, win, finisher });
+         } else if (battle && !b.atWon && RARE.includes(role)) {
+             emit(E.AT_BOSS_ATTACK, bossAttack(b));
+         }
+diff --git a/tests/logic.test.js b/tests/logic.test.js
+index d702f84..36d03d3 100644
+--- a/tests/logic.test.js
++++ b/tests/logic.test.js
+@@ -216,7 +216,7 @@ test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最
+             assert.ok(nerae < align && align < i, '狙え → 揃い → 勝利の順');
+             assert.equal(log[align].win, 'koori');
+         } else {
+-            // 最後のゲームのラストジャッジ。こおりくん以外が必殺技を放つのは勝つときだけ
++            // 最後のゲームのラストジャッジ。こおりくん以外が必殺技を放つ・こおりくんの絶対殺す剣は、勝つときだけ
+             assert.equal(boss.length, 1);
+             assert.equal(judge.length, 1);
+             const j = judge[0];
+@@ -263,6 +263,30 @@ test('AT 中のボーナスのラストジャッジで勝つと、特化ゾー
+     assert.ok(log.some(e => e.type === EVENTS.TOKKA_START), '特化ゾーンへ');
+ });
+ 
++test('ラストジャッジの絶対殺す剣 (kooriKill) と仲間の必殺技は勝つときだけ、負けはいつもこおりくん', () => {
++    const seen = { win: new Set(), lose: new Set() };
++    for (let seed = 1; seed <= 60; seed++) {
++        const win = seed % 2 === 0;
++        const m = createMachine({ seed });
++        const rng = createRng(seed);
++        const log = [];
++        m.on(e => log.push(e));
++        m.debug.direct();
++        play(m, rng);
++        m.debug.atBonus('big');
++        play(m, rng);   // 7 を揃える
++        m.debug.setNextRole('none');
++        play(m, rng);   // 最初のゲーム (登場)
++        m.debug.bossJudge(win);
++        play(m, rng);
++        const j = log.find(e => e.type === EVENTS.AT_BOSS_JUDGE);
++        assert.equal(j.win, win);
++        seen[win ? 'win' : 'lose'].add(j.finisher === 'koori' || j.finisher === 'kooriKill' ? j.finisher : 'ally');
++    }
++    assert.deepEqual([...seen.lose], ['koori']);
++    assert.ok(seen.win.has('kooriKill') && seen.win.has('ally') && seen.win.has('koori'), [...seen.win].join(','));
++});
++
+ test('前兆の途中で AT のゲーム数がなくなると、ラストジャッジで当落を告知する', () => {
+     for (const real of [true, false]) {
+         const m = createMachine({ seed: 8 });

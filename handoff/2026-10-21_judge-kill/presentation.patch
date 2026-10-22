@@ -1,0 +1,84 @@
+diff --git a/src/presentation/lcd/bossBattle.js b/src/presentation/lcd/bossBattle.js
+index a3e6691..6b1528e 100644
+--- a/src/presentation/lcd/bossBattle.js
++++ b/src/presentation/lcd/bossBattle.js
+@@ -44,9 +44,12 @@ const EX_MS = 620;        // ふだんの戦いの1つの攻め (飛びこむ・
+ const COUNTER_MS = 2480;  // 相手が反撃する間隔
+ 
+ // 1つの攻めの中身 (時間で決まる。期待度には関係しない)
++// 攻める人は、全員に順番が回るように 5 人おきに選ぶ (5 と人数 14 は割りきれないので、14 回で全員が1回ずつ攻める)
++// (seeded は近い種だと最初の値がほとんど同じになるので、だれが攻めるかの選び方には使わない)
+ function exchange(n) {
+-    const rnd = seeded(n * 7 + 3);
+-    const who = CAST[Math.floor(rnd() * CAST.length)];
++    const rnd = seeded(n * 7919 + 104729);
++    rnd();
++    const who = CAST[(n * 5) % CAST.length];
+     return { who, type: rnd() < 0.55 ? 'dash' : 'shot', seed: n };
+ }
+ 
+@@ -300,6 +303,7 @@ export function drawBossAttack(ctx, t, a, b) {
+ 
+ // ----- 最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge) -----
+ // j: { boss, win, finisher, phase: 'intro' | 'duel' | 'enter' | 'skill' | 'guard' | 'counter', since, skill }
++//   finisher: 'koori' (こおりくんの大腸炎アタック) / 'kooriKill' (こおりくんの絶対殺す剣。確定) / 仲間の id (確定)
+ export const DUEL_MS = 1400;
+ export const ENTER_MS = 1100;
+ const KOORI_X = 86;
+@@ -336,7 +340,8 @@ export function drawBossJudge(ctx, t, j) {
+         if (step >= 0) text(ctx, '一騎打ち!!', W / 2, 24, { size: 16, color: '#ffffff', lw: 5, stroke: '#3a0008' });
+         return;
+     }
+-    const finisher = j.finisher || 'koori';
++    // 絶対殺す剣もこおりくんが放つ (絵はこおりくん)
++    const finisher = !j.finisher || j.finisher === 'kooriKill' ? 'koori' : j.finisher;
+     const ally = finisher !== 'koori';
+     if (j.phase === 'enter') {
+         // こおりくんではなく仲間が飛びこんでくる (確定)
+diff --git a/src/presentation/lcd/director.js b/src/presentation/lcd/director.js
+index ff25b82..1b80859 100644
+--- a/src/presentation/lcd/director.js
++++ b/src/presentation/lcd/director.js
+@@ -453,7 +453,8 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+     }
+ 
+     // 最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge): PUSH (押さなくても進む) → 激突 → 必殺技 → 勝ち負け
+-    // こおりくんではなく仲間 (finisher) が飛びこんで必殺技を放ったら勝ち確定。こおりくんの技は、防がれて反撃されることもある
++    // こおりくんではなく仲間 (finisher) が飛びこんで必殺技を放つか、こおりくんが絶対殺す剣 (finisher: 'kooriKill') を放ったら勝ち確定。
++    // こおりくんのふつうの技 (大腸炎アタック) は、防がれて反撃されることもある
+     function startBossJudge(e) {
+         v.bossJudge = { boss: e.boss, win: e.win, finisher: e.finisher || 'koori', phase: 'intro', since: now };
+         v.bossAtk = null;
+@@ -472,7 +473,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+         const skill = phase => () => {
+             j.phase = phase;
+             j.since = now;
+-            j.skill = phase === 'counter' ? SKILL_KIND[j.boss] : j.finisher === 'koori' ? 'rainbowSword' : SKILL_KIND[j.finisher];
++            j.skill = phase === 'counter' ? SKILL_KIND[j.boss] : j.finisher === 'kooriKill' ? 'rainbowSword' : SKILL_KIND[j.finisher];
+             after(SKILL_MS * HIT_AT, () => sound.play(phase === 'guard' ? 'guard' : 'clash'));
+             wait(SKILL_MS, phase === 'guard' ? counter : done);
+         };
+@@ -486,7 +487,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+         setButton('white', { lit: false });
+         [0.18, 0.5, 0.82].forEach(k => after(DUEL_MS * k, () => sound.play('clash')));
+         wait(DUEL_MS, () => {
+-            if (j.finisher !== 'koori') {
++            if (j.finisher !== 'koori' && j.finisher !== 'kooriKill') {
+                 // 仲間が飛びこんでくる (確定)
+                 j.phase = 'enter';
+                 j.since = now;
+@@ -496,7 +497,13 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode =
+                 wait(ENTER_MS, () => specialCut(j.finisher, 'ally', SPECIALS[j.finisher], skill('skill')));
+                 return;
+             }
+-            const name = (j.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name;
++            // 絶対殺す剣 (四天王絶対殺す剣 / 大魔王には大魔王絶対殺す剣) は確定: 虹色のボタンと確定音
++            const kill = j.finisher === 'kooriKill';
++            const name = kill ? (j.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name : FINISHERS.default.name;
++            if (kill) {
++                setButton('rainbow', { pop: true });
++                after(350, () => sound.play('kakutei'));
++            }
+             specialCut('koori', 'ally', name, skill(j.win ? 'skill' : 'guard'));
+         });
+     }
