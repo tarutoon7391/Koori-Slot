@@ -10,7 +10,7 @@
 import { EVENTS as E, windowAt } from '../../logic/index.js';
 import { W, H, haze, rect, text, rainbow } from './kit.js';
 import {
-    TEAMS, drawBattle, drawCutin, drawDirect, drawElevator, drawFlash, drawFloor, drawHeaven,
+    SKIRMISH_MS, TEAMS, drawBattle, drawCutin, drawDirect, drawElevator, drawFlash, drawFloor, drawHeaven,
     drawMiddle, drawNavi, drawStandby, drawTenjo
 } from './scenes.js';
 import { BOSS_MS, END_MS, ENTRY_MS, KAKUTEI_MS, drawAtKakutei, drawBonusEnd, drawBonusScreen, drawBossFx, drawNerae } from './bonus.js';
@@ -35,6 +35,7 @@ const JUDGE_WAIT_MS = 4000;    // ラストジャッジで PUSH を待つ時間 
 const JUDGE_RESULT_MS = 2400;  // ラストジャッジの結果を見せる時間
 const NAV_WARN_MS = 1600;      // 「ナビに従ってください」を出す時間
 
+const SKIRMISH_RATE = 0.6;     // 前兆中のふだんのゲームで小競り合いを見せる割合
 const LEAVE_MS = 200;          // 前のカットインが右へはけて消えるまで
 const OKA_RAINBOW_RATE = 0.25; // おかランプ: 100G 以上の上乗せでランプが虹色に光る割合
 const CUTIN_KINDS = ['cutin', 'heaven'];   // 重ねるカットイン (必殺技のカットインは v.spCut)
@@ -428,6 +429,12 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             v.lastPayout = 0;
             v.battle = null;
             v.nerae = null;
+            // 前兆中のふだんのゲーム: ときどき小競り合い (両チームから1人ずつ出て、激突か技の撃ち合い。期待度には関係しない)
+            if (v.zencho && Math.random() < SKIRMISH_RATE) {
+                const type = pick(['clash', 'shootOurs', 'shootTheirs']);
+                v.zencho.skirmish = { ours: Math.floor(Math.random() * 3), theirs: Math.floor(Math.random() * 3), type, since: now + 250 };
+                after(type === 'clash' ? 650 : 250 + SKILL_MS * 0.55 * (SKIRMISH_MS / SKILL_MS), () => sound.play('clash'));
+            }
             if (!v.direct) setButton('white', { lit: false });
             changed();
         },

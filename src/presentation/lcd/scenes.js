@@ -6,7 +6,7 @@
 // =====================================================================
 
 import { ART } from '../art/characters.js';
-import { drawClash, drawSkillFx, hitShake } from './skillFx.js';
+import { SKILL_KIND, SKILL_MS, drawClash, drawSkillFx, hitShake } from './skillFx.js';
 import { drawSymbol } from '../art/symbols.js';
 import {
     BODY, GROUND, H, RAINBOW, W, ch, cutin, floorTag, haze, rainbow, rays, rect, room, roundRect,
@@ -97,18 +97,53 @@ function middleBackground(ctx, t) {
     rect(ctx, 0, 128, W, 52, vgrad(ctx, 128, H, ['#4a3a6a', '#1a1028']));
 }
 
+// 前兆中のこちらのチーム (左) と、小競り合いのときの大きさ
+const MIDDLE_OURS = [{ id: 'yasu', x: 38, scale: 2 }, { id: 'onioni', x: 70, scale: 1.5 }, { id: 'koori', x: 108, scale: 3 }];
+export const SKIRMISH_MS = 1700;
+
+// 前兆の中間階層。zencho.skirmish があれば小競り合い (2026-10-21 ユーザー指定: 中間階層の戦闘にも演出を)
+//   skirmish: { ours, theirs, type: 'clash' | 'shootOurs' | 'shootTheirs', since }  ours / theirs は前に出る1人の番号
 export function drawMiddle(ctx, t, zencho) {
     middleBackground(ctx, t);
     const team = TEAMS[zencho.team];
     const f = frameOf(t);
     const since = t - zencho.since;
+    const sk = zencho.skirmish;
+    const ks = sk ? t - sk.since : -1;
+    const active = sk && ks >= 0 && ks < SKIRMISH_MS;
+    // 激突: 400ms で中央へ出て、ぶつかって、最後の 400ms でもどる
+    const out = !active || sk.type !== 'clash' ? 0 : ks < 400 ? ease(ks / 400) : ks > SKIRMISH_MS - 400 ? 1 - ease((ks - SKIRMISH_MS + 400) / 400) : 1;
+    const shake = active && sk.type !== 'clash' ? hitShake(ks * (SKILL_MS / SKIRMISH_MS)) : 0;
     // ライバルが右から入ってくる
     const enter = ease(since / 900);
     const off = (1 - enter) * 120;
-    ch(ctx, 'yasu', 38, GROUND, { scale: 2, frame: f });
-    ch(ctx, 'onioni', 70, GROUND, { scale: 1.5, frame: f });
-    ch(ctx, 'koori', 108, GROUND, { scale: 3, frame: f });
-    team.members.forEach((id, i) => ch(ctx, id, 210 + i * 39 + off, GROUND, { scale: ART[id].w > 34 ? 1.4 : 1.6, flip: true, frame: f }));
+    MIDDLE_OURS.forEach((m, i) => {
+        const me = active && i === sk.ours;
+        const x = me ? m.x + (140 - m.x) * out + (sk.type === 'shootTheirs' ? shake : 0) : m.x;
+        ch(ctx, m.id, x, GROUND, { scale: m.scale, frame: me ? frameOf(t, 140) : f, tint: me && sk.type === 'shootTheirs' && shake ? '#ffffff' : null });
+    });
+    team.members.forEach((id, i) => {
+        const me = active && i === sk.theirs;
+        const x0 = 210 + i * 39 + off;
+        const x = me ? x0 + (182 - x0) * out + (sk.type === 'shootOurs' ? shake : 0) : x0;
+        ch(ctx, id, x, GROUND, { scale: ART[id].w > 34 ? 1.4 : 1.6, flip: true, frame: me ? frameOf(t, 140) : f, tint: me && sk.type === 'shootOurs' && shake ? '#ffffff' : null });
+    });
+    if (active) {
+        if (sk.type === 'clash') {
+            drawClash(ctx, t, ks - 400, 161, 112, sk.ours + sk.theirs);
+        } else {
+            // 技を撃ち合う: 撃たれた側は「ガード！」で受ける
+            const ourM = MIDDLE_OURS[sk.ours], theirId = team.members[sk.theirs];
+            const a = { x: ourM.x + 10, y: 112 }, b = { x: 210 + sk.theirs * 39 - 10, y: 112 };
+            const shooterOurs = sk.type === 'shootOurs';
+            const kind = SKILL_KIND[shooterOurs ? ourM.id : theirId];
+            drawSkillFx(ctx, t, ks * (SKILL_MS / SKIRMISH_MS), kind, shooterOurs ? a : b, shooterOurs ? b : a);
+            if (ks > SKIRMISH_MS * 0.55 && ks < SKIRMISH_MS - 200) {
+                const g = shooterOurs ? b : a;
+                text(ctx, 'ガード！', g.x, g.y - 66, { size: 13, color: '#bfe8ff', lw: 4, stroke: '#0a2a5a' });
+            }
+        }
+    }
     roundRect(ctx, 80, 6, 160, 20, 3, 'rgba(0,0,0,.6)', '#b080ff');
     text(ctx, '摩天楼 中間階層', W / 2, 16.5, { size: 11, color: '#e0d0ff', stroke: null, font: BODY, weight: '700' });
     if (since < 2600) {
@@ -168,9 +203,20 @@ export function drawBattle(ctx, t, zencho, battle) {
         ctx.restore();
         drawClash(ctx, t, since - 650, W / 2, 112, battle.round);
     }
+    // 1戦目・2戦目…: 激突のあと、技を撃ち合う (戦ごとに撃つ側を入れかえる。撃たれた側は「ガード！」)
+    if (!final && since > 1150) {
+        const ks = since - 1150;
+        const shooterOurs = battle.round % 2 === 1;
+        const a = { x: ox + 12, y: 112 }, b = { x: tx - 12, y: 112 };
+        drawSkillFx(ctx, t, ks, SKILL_KIND[shooterOurs ? ours : theirs], shooterOurs ? a : b, shooterOurs ? b : a);
+        if (ks > SKILL_MS * 0.55 && ks < SKILL_MS) {
+            const g = shooterOurs ? b : a;
+            text(ctx, 'ガード！', g.x, g.y - 66, { size: 13, color: '#bfe8ff', lw: 4, stroke: '#0a2a5a' });
+        }
+    }
     roundRect(ctx, 110, 6, 100, 22, 4, 'rgba(0,0,0,.7)', final ? '#ffe040' : '#ffffff');
     text(ctx, label, W / 2, 17.5, { size: 13, color: final ? '#ffe040' : '#ffffff', stroke: null, font: BODY, weight: '700' });
-    if (!final && since > 1100) text(ctx, '互角！', W / 2, 64, { size: 20, color: '#ffffff', lw: 5, stroke: '#3a2a6a' });
+    if (!final && since > 1150 + SKILL_MS) text(ctx, '互角！', W / 2, 64, { size: 20, color: '#ffffff', lw: 5, stroke: '#3a2a6a' });
     if (final && battle.phase === 'push') {
         const pulse = 1 + Math.sin(t / 110) * 0.08;
         text(ctx, 'PUSH!', W / 2, 62, { size: 34 * pulse, color: buttonFill(ctx, battle.button, 40, 80), lw: 7, stroke: '#1a0a2a' });
