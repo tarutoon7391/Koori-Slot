@@ -4,7 +4,7 @@
 // 当選したときのフリーズ風の「特化ゾーン ストック！」/ パターンを選ぶ画面 /
 // 魔王の褒美 (3G 終わってから宝箱で結果をまとめて出す。継続確定なら虹フラッシュ) /
 // こおり大腸炎 (1G ごとに上乗せを出す。継続確定なら炎とこおりくんが虹色になって「確定」) /
-// おかランプ (踊るおかがっぱの頭のランプが、リプレイ以上を引いたらレバーの瞬間に真っ赤に点灯。100G 以上は 25% で虹色) / 復活！ / 終了。
+// おかランプ (まんなかの8頭身のおかがっぱがキレのあるダンスを踊り、その頭のランプが、リプレイ以上を引いたらレバーの瞬間に真っ赤に点灯。100G 以上は 25% で虹色) / 復活！ / 終了。
 // どの場面を出すかは director.js が決め、ここは描くだけ。t・since はミリ秒。
 // =====================================================================
 
@@ -75,7 +75,7 @@ export function drawTokkaSelect(ctx, t, choice, left) {
         } else if (id === 'okaLamp') {
             rect(ctx, x + 4, y + 4, w - 8, 78, vgrad(ctx, y, y + 82, ['#10061e', '#3a0a3a']));
             drawDanceFloor(ctx, t, x + 4, y + 60, w - 8, 22);
-            drawOkagappaLamp(ctx, t, x + w / 2, y + 80, 1.5, frameOf(t, 600) ? 'red' : null);
+            drawTallOkagappa(ctx, t, x + w / 2, y + 80, 62, frameOf(t, 600) ? 'red' : null);
         } else {
             rect(ctx, x + 4, y + 4, w - 8, 78, vgrad(ctx, y, y + 82, ['#3a1000', '#a03a00']));
             drawFlames(ctx, t, x + w / 2, y + 80, 0.6, false);
@@ -246,7 +246,7 @@ function drawDaichoen(ctx, t, z) {
 }
 
 // ----- おかランプ (2026-10-21 ユーザー指定) -----
-// 踊り続けるおかがっぱの頭のランプが、リプレイ以上を引いたゲームのレバーの瞬間に真っ赤に点灯する。
+// 左右にいつものおかがっぱ、まんなかに8頭身のおかがっぱ。踊り続ける8頭身のおかがっぱの頭のランプが、リプレイ以上を引いたゲームのレバーの瞬間に真っ赤に点灯する。
 // 100G 以上の上乗せのゲームも点灯し、25% で虹色に光る (3桁の上乗せの告知)。z.lamp: { color: 'red' | 'rainbow', at } | null
 
 // ダンスフロア (色の変わるタイル)
@@ -308,16 +308,227 @@ function drawLamp(ctx, t, x, y, s, color, litSince = 99999) {
     }
 }
 
-// ランプをのせて踊るおかがっぱ。(x, ground) は足もと
-function drawOkagappaLamp(ctx, t, x, ground, scale, lamp, litSince) {
-    const beat = t / 300;
-    const bob = Math.abs(Math.sin(beat * Math.PI)) * 4 * scale / 2.6;
-    const sway = Math.sin(beat * Math.PI / 2) * 6 * scale / 2.6;
-    const flip = Math.floor(beat / 2) % 2 === 1;
-    const gx = x + sway, gy = ground - bob;
-    ch(ctx, 'okagappa', gx, gy, { scale, flip, frame: Math.floor(beat) % 2 });
-    // 頭の皿の上にランプ (おかがっぱの絵は 32x40 ドット。皿は上から1ドットめ)
-    drawLamp(ctx, t, gx, gy - 40 * scale + 2 * scale, scale * 0.9, lamp, litSince);
+// ----- 8頭身のおかがっぱ (2026-10-21 ユーザー指定: まんなかに8頭身のおかがっぱ。キレのすごいダンスを踊り、頭にランプ) -----
+// 頭はいつものおかがっぱの絵 (上の 19 ドット) を使い、首から下は長い手足を線で描く。
+// 1拍 (BEAT_MS) ごとにポーズを変える。動きは拍の頭のほんの一瞬 (SNAP_MS) で決めて、あとはピタッと止める (キレ)。
+// 決めた瞬間は、手先・足先にキレの線と、前のポーズの残像を出す。
+const BEAT_MS = 300;
+const SNAP_MS = 70;
+const HEAD_ROWS = 19;   // おかがっぱの絵 (32x40) の頭の部分 (皿〜くちばし)
+const G = { body: '#5ab84a', dark: '#469a3a', line: '#24501c', belly: '#e8e0a0', shell: '#8a6a3a', hand: '#7ad06a' };
+
+// ポーズ: 腕と脚は [付け根の角度, 先の角度] (度。0 が真下・90 が右・180 が真上・-90 が左。画面で見た向き)
+// lean: 体の傾き / tilt: 首の傾き / up: 跳ぶ高さ (頭の高さの何倍)
+const POSES = {
+    ready: { armL: [-20, -8], armR: [20, 8], legL: [-6, -2], legR: [6, 2], lean: 0, tilt: 0 },
+    fever: { armL: [-35, 45], armR: [148, 152], legL: [-14, -10], legR: [28, -4], lean: -6, tilt: 8 },
+    feverDown: { armL: [-35, 45], armR: [-42, -50], legL: [-14, -10], legR: [28, -4], lean: 6, tilt: -6 },
+    wide: { armL: [-138, -150], armR: [138, 150], legL: [-30, -24], legR: [30, 24], lean: 0, tilt: 0, up: 0.5 },
+    split: { armL: [-95, -100], armR: [95, 100], legL: [-84, -88], legR: [84, 88], lean: 0, tilt: 0 },
+    robot: { armL: [-90, 0], armR: [90, 180], legL: [-6, -6], legR: [6, 6], lean: 0, tilt: -12 },
+    kick: { armL: [-120, -100], armR: [60, 25], legL: [-4, -4], legR: [100, 92], lean: -14, tilt: -6 },
+    dab: { armL: [-128, -128], armR: [-100, -152], legL: [-18, -12], legR: [14, 6], lean: -8, tilt: -24 },
+    pose: { armL: [-30, -170], armR: [35, 110], legL: [-4, 18], legR: [22, 12], lean: 4, tilt: 10 }
+};
+const mirror = p => ({
+    armL: p.armR.map(a => -a), armR: p.armL.map(a => -a), legL: p.legR.map(a => -a), legR: p.legL.map(a => -a),
+    lean: -p.lean, tilt: -p.tilt, up: p.up
+});
+// 16拍で1まわり。[ポーズ, 左右反転, くるっと回ってから決める]
+const CHOREO = [
+    ['fever'], ['feverDown'], ['fever'], ['feverDown'],
+    ['wide'], ['split'], ['robot'], ['robot', true],
+    ['kick'], ['kick', true], ['dab'], ['dab', true],
+    ['pose', false, true], ['wide'], ['split'], ['ready', false, true]
+];
+const stepAt = beat => CHOREO[((beat % CHOREO.length) + CHOREO.length) % CHOREO.length];
+const poseAt = beat => {
+    const [id, flip] = stepAt(beat);
+    return flip ? mirror(POSES[id]) : POSES[id];
+};
+const lerp = (a, b, k) => a + (b - a) * k;
+function blend(p, q, k) {
+    const mix = (x, y) => x.map((v, i) => lerp(v, y[i], k));
+    return {
+        armL: mix(p.armL, q.armL), armR: mix(p.armR, q.armR), legL: mix(p.legL, q.legL), legR: mix(p.legR, q.legR),
+        lean: lerp(p.lean, q.lean, k), tilt: lerp(p.tilt, q.tilt, k), up: lerp(p.up || 0, q.up || 0, k)
+    };
+}
+const dir = deg => [Math.sin(deg * Math.PI / 180), Math.cos(deg * Math.PI / 180)];
+
+// 骨組み: 首・腰と、手足の関節の位置を出す。u は頭の高さ (全身の 1/8)
+function skeleton(x, ground, u, p) {
+    const torso = 2.6 * u, thigh = 2.1 * u, shin = 2.0 * u, upper = 1.35 * u, fore = 1.25 * u;
+    const lean = p.lean * Math.PI / 180;
+    // 足が地面に着くように腰の高さを決める (跳ぶポーズは浮かせる)
+    const legDrop = ([a, b]) => thigh * dir(a)[1] + shin * dir(b)[1];
+    const hipY = ground - Math.max(legDrop(p.legL), legDrop(p.legR), 0.5 * u) - 0.2 * u - (p.up || 0) * u;
+    const hip = [x, hipY];
+    const neck = [x + Math.sin(lean) * torso, hipY - Math.cos(lean) * torso];
+    const across = [Math.cos(lean), Math.sin(lean)];
+    const shoulder = side => [neck[0] + across[0] * side * 0.72 * u, neck[1] + across[1] * side * 0.72 * u + 0.15 * u];
+    const hipAt = side => [hip[0] + across[0] * side * 0.42 * u, hip[1] + across[1] * side * 0.42 * u];
+    const limb = (root, [a, b], l1, l2) => {
+        const d1 = dir(a), d2 = dir(b);
+        const mid = [root[0] + d1[0] * l1, root[1] + d1[1] * l1];
+        return [root, mid, [mid[0] + d2[0] * l2, mid[1] + d2[1] * l2]];
+    };
+    return {
+        neck, hip, lean,
+        armL: limb(shoulder(-1), p.armL, upper, fore), armR: limb(shoulder(1), p.armR, upper, fore),
+        legL: limb(hipAt(-1), p.legL, thigh, shin), legR: limb(hipAt(1), p.legR, thigh, shin)
+    };
+}
+
+function strokeLimb(ctx, pts, w, color, outline) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    [[w + 2, outline], [w, color]].forEach(([lw, c]) => {
+        ctx.strokeStyle = c;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        pts.slice(1).forEach(q => ctx.lineTo(q[0], q[1]));
+        ctx.stroke();
+    });
+}
+
+// 首から下を描く。sk: skeleton() / u: 頭の高さ / ghost: 残像の色 (色1つの薄い絵)
+function drawTallBody(ctx, sk, u, ghost = null) {
+    const limbW = Math.max(2, 0.34 * u);
+    const c = ghost ? { body: ghost, dark: ghost, line: ghost, belly: ghost, shell: ghost, hand: ghost } : G;
+    // 脚 (足は少し前へ出た四角)
+    ['legL', 'legR'].forEach((k, i) => {
+        strokeLimb(ctx, sk[k], limbW * 1.1, i ? c.body : c.dark, c.line);
+        const [fx, fy] = sk[k][2];
+        rect(ctx, fx - (i ? 0.15 : 0.55) * u, fy - 0.12 * u, 0.7 * u, 0.24 * u, c.dark);
+    });
+    // 胴 (甲羅のふち・おなか)
+    ctx.save();
+    ctx.translate(sk.hip[0], sk.hip[1]);
+    ctx.rotate(sk.lean);
+    const tw = 1.5 * u, hw = 1.05 * u, tl = 2.6 * u;
+    [[c.line, 1], [c.body, 0]].forEach(([fill, o]) => {
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.moveTo(-hw / 2 - o, o);
+        ctx.lineTo(-tw / 2 - o, -tl + 0.1 * u);
+        ctx.lineTo(tw / 2 + o, -tl + 0.1 * u);
+        ctx.lineTo(hw / 2 + o, o);
+        ctx.fill();
+    });
+    rect(ctx, -tw / 2, -tl + 0.3 * u, 0.16 * u, tl * 0.7, c.shell);
+    rect(ctx, tw / 2 - 0.16 * u, -tl + 0.3 * u, 0.16 * u, tl * 0.7, c.shell);
+    rect(ctx, -0.42 * u, -tl + 0.35 * u, 0.84 * u, tl * 0.8, c.belly);
+    if (!ghost) for (let i = 1; i < 4; i++) rect(ctx, -0.42 * u, -tl + 0.35 * u + i * tl * 0.2, 0.84 * u, Math.max(1, 0.06 * u), '#c8c080');
+    ctx.restore();
+    // 首
+    strokeLimb(ctx, [sk.neck, [sk.neck[0], sk.neck[1] - 0.3 * u]], 0.4 * u, c.body, c.line);
+    // 腕と手
+    ['armL', 'armR'].forEach(k => {
+        strokeLimb(ctx, sk[k], limbW, c.body, c.line);
+        const [hx, hy] = sk[k][2];
+        rect(ctx, hx - 0.2 * u, hy - 0.2 * u, 0.4 * u, 0.4 * u, c.hand);
+    });
+}
+
+// 頭 (いつものおかがっぱの絵の上の部分) を首の上に。戻り値: 頭のてっぺん (ランプを置くところ) と傾き
+function drawTallHead(ctx, t, sk, u, tilt, flip) {
+    const hs = u / HEAD_ROWS;   // 絵の 1 ドットの大きさ
+    const nx = sk.neck[0], ny = sk.neck[1] - 0.25 * u;
+    const a = (tilt * Math.PI) / 180;
+    ctx.save();
+    ctx.translate(nx, ny);
+    ctx.rotate(a);
+    ctx.beginPath();
+    ctx.rect(-20 * hs, -HEAD_ROWS * hs, 40 * hs, HEAD_ROWS * hs);
+    ctx.clip();
+    // 絵の足もと (40 ドット目) を首より下に置くと、頭 (上の 19 ドット) が首の上にくる
+    ch(ctx, 'okagappa', 0, (40 - HEAD_ROWS) * hs, { scale: hs, flip, frame: Math.floor(t / BEAT_MS) % 2 });
+    ctx.restore();
+    const top = (HEAD_ROWS - 2) * hs;
+    return [nx + Math.sin(a) * top, ny - Math.cos(a) * top, a];
+}
+
+// キレの線: 手先・足先から外へ短い線
+function drawSnapLines(ctx, sk, u, k) {
+    ctx.save();
+    ctx.globalAlpha = 1 - k;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1, 0.12 * u);
+    ['armL', 'armR', 'legL', 'legR'].forEach(key => {
+        const [, mid, end] = sk[key];
+        const dx = end[0] - mid[0], dy = end[1] - mid[1];
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = dx / len, ny = dy / len;
+        [-0.5, 0, 0.5].forEach(spread => {
+            const ax = nx * Math.cos(spread) - ny * Math.sin(spread);
+            const ay = nx * Math.sin(spread) + ny * Math.cos(spread);
+            const r0 = 0.4 * u + k * 0.4 * u, r1 = r0 + 0.6 * u;
+            ctx.beginPath();
+            ctx.moveTo(end[0] + ax * r0, end[1] + ay * r0);
+            ctx.lineTo(end[0] + ax * r1, end[1] + ay * r1);
+            ctx.stroke();
+        });
+    });
+    ctx.restore();
+}
+
+// 8頭身のおかがっぱ。(x, ground) は足もと、h は全身の高さ。lamp: null / 'red' / 'rainbow'
+function drawTallOkagappa(ctx, t, x, ground, h, lamp, litSince = 99999) {
+    const u = h / 8;
+    const beat = Math.floor(t / BEAT_MS);
+    const inBeat = t - beat * BEAT_MS;
+    const prev = poseAt(beat - 1), next = poseAt(beat);
+    const k = inBeat < SNAP_MS ? ease(inBeat / SNAP_MS) : 1;
+    // 決めた直後は少しだけ行きすぎてから戻る (ピタッと止まる感じ)
+    const over = inBeat < SNAP_MS ? 0 : Math.max(0, 1 - (inBeat - SNAP_MS) / 120);
+    const pose = blend(prev, next, k + over * 0.06);
+    const spinMs = SNAP_MS * 2.2;
+    const spin = stepAt(beat)[2] && inBeat < spinMs;
+    const facing = Math.floor(beat / 4) % 2 === 1;
+    // 残像 (ポーズを変えている一瞬だけ)
+    if (inBeat < SNAP_MS * 1.6) {
+        ctx.save();
+        ctx.globalAlpha *= 0.28 * (1 - inBeat / (SNAP_MS * 1.6));
+        drawTallBody(ctx, skeleton(x, ground, u, prev), u, '#c080ff');
+        ctx.restore();
+    }
+    // 足もとの影
+    ctx.save();
+    ctx.globalAlpha *= 0.35;
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.ellipse(x, ground, 1.6 * u, 0.3 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    if (spin) {
+        // くるっと回る (横につぶれてから戻る)
+        const sx = Math.cos((inBeat / spinMs) * Math.PI * 2);
+        ctx.translate(x, 0);
+        ctx.scale(Math.abs(sx) < 0.15 ? (sx < 0 ? -0.15 : 0.15) : sx, 1);
+        ctx.translate(-x, 0);
+    }
+    const sk = skeleton(x, ground, u, pose);
+    drawTallBody(ctx, sk, u);
+    const [lx, ly, la] = drawTallHead(ctx, t, sk, u, pose.tilt, facing);
+    // 頭の皿の上にランプ
+    ctx.save();
+    ctx.translate(lx, ly);
+    ctx.rotate(la);
+    drawLamp(ctx, t, 0, 0, u / 13, lamp, litSince);
+    ctx.restore();
+    ctx.restore();
+    if (!spin && inBeat >= SNAP_MS && inBeat < SNAP_MS + 160) drawSnapLines(ctx, sk, u, (inBeat - SNAP_MS) / 160);
+}
+
+// 左右のいつものおかがっぱ (ランプなし。まんなかに合わせて体をゆらす)
+function drawBackupOkagappa(ctx, t, x, ground, scale, right) {
+    const beat = t / BEAT_MS;
+    const bob = Math.abs(Math.sin(beat * Math.PI)) * 3;
+    const sway = Math.sin(beat * Math.PI / 2) * 4 * (right ? -1 : 1);
+    ch(ctx, 'okagappa', x + sway, ground - bob, { scale, flip: right !== (Math.floor(beat / 2) % 2 === 1), frame: Math.floor(beat) % 2 });
 }
 
 function drawOkaLamp(ctx, t, z) {
@@ -353,7 +564,10 @@ function drawOkaLamp(ctx, t, z) {
         ctx.restore();
         spinRays(ctx, t, W / 2, 60, lamp === 'rainbow' ? RAINBOW : ['#ff4040', 'rgba(0,0,0,0)'], 24, 0.2, 1500);
     }
-    drawOkagappaLamp(ctx, t, W / 2, 152, 2.1, lamp, z.lamp ? t - z.lamp.at : 99999);
+    // 左右にいつものおかがっぱ、まんなかに8頭身のおかがっぱ (頭にランプ)
+    drawBackupOkagappa(ctx, t, 54, 164, 1.9, false);
+    drawBackupOkagappa(ctx, t, W - 54, 164, 1.9, true);
+    drawTallOkagappa(ctx, t, W / 2, 172, 124, lamp, z.lamp ? t - z.lamp.at : 99999);
     // 点いた瞬間の文字
     if (z.lamp && t - z.lamp.at < 1200) {
         const k = t - z.lamp.at;
@@ -372,7 +586,7 @@ function drawOkaLamp(ctx, t, z) {
             ctx.restore();
         }
     }
-    if (z.guarantee > 0) text(ctx, `継続確定 ×${z.guarantee}`, 70, 120, { size: 10, color: rainbow(ctx, 20, 0, 120, 0), lw: 3 });
+    if (z.guarantee > 0) text(ctx, `継続確定 ×${z.guarantee}`, 84, 56, { size: 10, color: rainbow(ctx, 40, 0, 130, 0), lw: 3 });
 }
 
 // ----- セットの結果: 継続！ / 復活！ / 終了 -----

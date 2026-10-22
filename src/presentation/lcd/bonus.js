@@ -714,7 +714,7 @@ function drawEpisode(ctx, t, b) {
 }
 
 // ----- 下の帯: 獲得枚数・残りゲーム数・進み具合。AT確定のあとは右上に「AT確定」 -----
-function drawBonusHud(ctx, t, b) {
+export function drawBonusHud(ctx, t, b) {
     const dark = b.bonus === 'epbig' ? '#2a1020' : b.bonus === 'big' ? '#3a2000' : '#2a3038';
     rect(ctx, 0, 162, W, 18, 'rgba(0,0,0,.55)');
     text(ctx, `獲得 ${b.payout}枚`, 10, 171, { size: 11, align: 'left', color: '#ffffff', lw: 3, stroke: dark });

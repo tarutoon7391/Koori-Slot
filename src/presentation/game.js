@@ -146,10 +146,10 @@ export function createGame({ setting = 1 } = {}) {
         notify();
     }
 
-    // 液晶をタップした (x: 左端 0 〜 右端 1)。特化ゾーンのパターンを選ぶときに使う
+    // 液晶をタップした (x: 左端 0 〜 右端 1)。特化ゾーンのパターンを選ぶ・AT 中のボーナスの画面を切りかえるときに使う
     function tapLcd(x) {
         Sound.unlock();
-        if (director.select(x < 1 / 3 ? 'left' : x < 2 / 3 ? 'middle' : 'right')) notify();
+        if (director.select(x < 1 / 3 ? 'left' : x < 2 / 3 ? 'middle' : 'right') || director.toggleView()) notify();
     }
 
     // PUSH ボタンを離した (長押しの演出で使う)

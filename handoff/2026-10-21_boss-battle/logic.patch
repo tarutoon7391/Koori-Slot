@@ -1,0 +1,224 @@
+diff --git a/src/logic/config.js b/src/logic/config.js
+index f730497..5f7900b 100644
+--- a/src/logic/config.js
++++ b/src/logic/config.js
+@@ -154,6 +154,19 @@ export const CONFIG = {
+             win: { daishi: 10, zumitani: 15, runaya: 20, nozoema: 25, maou: 30 },
+             lose: { daishi: 45, zumitani: 30, runaya: 15, nozoema: 8, maou: 2 }
+         },
++        // AT 中のボーナスの戦闘で、レア役のときの仲間の攻撃 (at:bossAttack。v0.6)【仮】
++        // hot: このボーナスで特化ゾーンに当たる (まだ当たっていない) / cold: 当たらない。金・虹は hot だけ (確定)
++        bossAttack: {
++            hot: { move: { cutin: 50, special: 50 }, result: { hit: 75, guard: 15, dodge: 10 }, color: { white: 35, red: 40, gold: 17, rainbow: 8 }, shout: 0.5 },
++            cold: { move: { cutin: 80, special: 20 }, result: { hit: 35, guard: 35, dodge: 30 }, color: { white: 85, red: 15 }, shout: 0.08 }
++        },
++        // AT 中のボーナスの最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge。v0.6)【仮】
++        // byJudge: 特化ゾーンに当たるボーナスのうち、ラストジャッジで勝つ割合 / allyFinish: 勝つときに仲間が必殺技を放つ割合 (確定)
++        bossJudge: {
++            byJudge: 0.3,
++            allyFinish: 0.45,
++            allies: ['onioni', 'yasu', 'tamu', 'dake', 'okagappa', 'hibikimakuri', 'yamamou', 'sasaki', 'kotani', 'asahara', 'shibata', 'ikekimu', 'ueno']
++        },
+         // 設定示唆トロフィー (AT 終了画面に落ちてくる)。rate: 出る率 / weights: 出たときの色 (設定ごと)【仮: 前作の値】
+         trophy: {
+             rate: 0.5,
+diff --git a/src/logic/events.js b/src/logic/events.js
+index 666d27b..f42d21f 100644
+--- a/src/logic/events.js
++++ b/src/logic/events.js
+@@ -36,7 +36,9 @@ export const EVENTS = {
+     AT_GAME: 'at:game',           // { left, nav }  nav: 押し順 [リール番号, …] (ナビのないゲームは null)。nav[0] が 0 (順押し) は当選確定
+     AT_ADD: 'at:add',             // { games, left, attacker, enemy }  上乗せ。attacker: 'yasu' | 'tamu' | 'dake' | 'onioni' | 'sword' | 'hammer' | 'kill' / enemy: キャラの id
+     AT_MISS: 'at:miss',           // { attacker, enemy }  上乗せなしのレア役 (「ミス！」)
+-    AT_BOSS: 'at:boss',           // { boss, final, win }  AT 中のボーナスの相手 (登場 / 勝利 / 敗北)
++    AT_BOSS: 'at:boss',           // { boss, final, win }  AT 中のボーナスの相手 (登場 / 勝利)
++    AT_BOSS_ATTACK: 'at:bossAttack', // { boss, move, result, color, shout }  AT 中のボーナスのレア役で、仲間が相手を攻撃する (v0.6)
++    AT_BOSS_JUDGE: 'at:bossJudge', // { boss, win, finisher }  AT 中のボーナスの最後のゲームの一騎打ち「ラストジャッジ」(v0.6)
+     AT_JUDGE: 'at:judge',         // { win, bonus }  前兆中に AT のゲーム数がなくなったときの当落告知
+     AT_END: 'at:end',             // { games, payout, hint, trophy }  hint: 設定示唆の画像 / trophy: 設定示唆トロフィーの色 (出ないときは null)
+ 
+diff --git a/src/logic/machine.js b/src/logic/machine.js
+index f886d72..e9cb21d 100644
+--- a/src/logic/machine.js
++++ b/src/logic/machine.js
+@@ -305,32 +305,57 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+ 
+     // ----- ボーナス (仮組) -----
+     // 当選したゲームのレバーで「こおりを狙え」(仕様書: 当選 → カットイン → こおりくん揃い)。
+-    // AT 中のボーナスは、最初のゲームで相手が登場し、揃ったゲームの終わりに勝利、当たらないまま最後のゲームなら敗北 (docs/events.md)
++    // AT 中のボーナスは、最初のゲームで相手が登場し、揃ったゲームの終わりに勝利。当たらないまま最後のゲームに来たら、
++    // 相手との一騎打ち「ラストジャッジ」(at:bossJudge) で勝ち負けを決める。レア役では仲間が攻撃する (at:bossAttack) (docs/events.md v0.6)
+     // 戻り値: このゲームの出目の形 (狙えのときは 'koori')
+     function bonusGame(role) {
+         const b = s.bonus;
+         let shape = null;
+-        if (b.inAt && b.type !== 'epbig' && b.left === config.bonusGames[b.type]) {
++        const battle = b.inAt && b.type !== 'epbig';
++        if (battle && b.left === config.bonusGames[b.type]) {
+             b.boss = rng.weighted(config.show.boss[b.willWin ? 'win' : 'lose']);
+             emit(E.AT_BOSS, { boss: b.boss, final: false, win: null });
+         }
+         // 通常のボーナスは役で抽選。AT 中のボーナスは、始まりで決めたゲーム (winAt) で当てる (相手を当たりやすさに合わせるため)【仮組】
++        // winAt が 1 (最後のゲーム) のときは「こおりを狙え」ではなく、ラストジャッジで勝つ
+         const hit = b.inAt
+-            ? b.willWin && b.left === b.winAt
++            ? b.willWin && b.winAt > 1 && b.left === b.winAt
+             : RARE.concat('bell').includes(role) && rng.chance((config.bonusAt[role] || 0) / 100);
+         if (!b.atWon && b.type !== 'epbig' && hit) {
+             b.atWon = true;
+             emit(E.BONUS_NERAE, { color: rng.weighted(config.show.cutin.real), win: true });
+             shape = 'koori';
+             if (b.inAt) b.bossWin = true;
+-        } else if (b.inAt && b.type !== 'epbig' && !b.atWon && b.left === 1) {
+-            emit(E.AT_BOSS, { boss: b.boss, final: true, win: false });
++        } else if (battle && !b.atWon && b.left === 1) {
++            // ラストジャッジ: 勝つときだけ、こおりくんの代わりに仲間が必殺技を放つことがある (確定)
++            const cfg = config.show.bossJudge;
++            const win = Boolean(b.willWin && b.winAt === 1);
++            if (win) b.atWon = true;
++            emit(E.AT_BOSS_JUDGE, { boss: b.boss, win, finisher: win && rng.chance(cfg.allyFinish) ? rng.pick(cfg.allies) : 'koori' });
++        } else if (battle && !b.atWon && RARE.includes(role)) {
++            emit(E.AT_BOSS_ATTACK, bossAttack(b));
+         }
+         b.left--;
+         emit(E.BONUS_GAME, { bonus: b.type, left: b.left });
+         return shape;
+     }
+ 
++    // AT 中のボーナスのレア役: 仲間の攻撃の見せ方 (期待度に関わるので内部処理が抽選)【仮組】
++    // このボーナスで特化ゾーンに当たるなら当たりやすく・赤や「畳みかけろ！」が出やすく、金・虹は当たるときだけ
++    function bossAttack(b) {
++        const cfg = config.show.bossAttack[b.willWin ? 'hot' : 'cold'];
++        const move = rng.weighted(cfg.move);
++        const result = rng.weighted(cfg.result);
++        const hit = result === 'hit';
++        return {
++            boss: b.boss,
++            move,
++            result,
++            color: hit ? rng.weighted(cfg.color) : 'white',
++            shout: hit && rng.chance(cfg.shout)
++        };
++    }
++
+     function finishBonus() {
+         const b = s.bonus;
+         // AT 中のボーナス: こおりくんが揃ったゲームの終わりに勝利
+@@ -655,7 +680,15 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+             // AT 中にボーナス確定にする (AT 中のボーナス。docs/events.md 3章)
+             atBonus: (type = 'big') => { if (s.phase === 'at' && !s.tokka && !s.spin) winBonus(type); },
+             // AT の残りを数ゲームにする (終了画面・ラストジャッジの確認)
+-            atEndSoon: () => { if (s.at) s.at.left = Math.min(s.at.left, 3); }
++            atEndSoon: () => { if (s.at) s.at.left = Math.min(s.at.left, 3); },
++            // AT 中のボーナスを、次のゲームでラストジャッジにする (win: 勝つか。v0.6。内部処理の担当が用意する)
++            bossJudge: (win = true) => {
++                const b = s.bonus;
++                if (s.phase !== 'bonus' || !b || !b.inAt || b.type === 'epbig' || b.atWon || !b.boss || s.spin || b.left < 1) return;
++                b.left = 1;
++                b.willWin = win;
++                b.winAt = win ? 1 : 0;
++            }
+         }
+     };
+ 
+@@ -682,7 +715,8 @@ export function createMachine({ setting = 1, seed = Date.now(), config = CONFIG
+             if (b.inAt) {
+                 // AT 中のボーナスで特化ゾーンに当たるか・何ゲーム目かを先に決める【仮組】(BIG 約40%・REG 約20%)
+                 b.willWin = rng.chance(b.type === 'reg' ? 0.2 : 0.4);
+-                b.winAt = rng.int(2, b.left - 1);
++                // 1 は最後のゲーム (ラストジャッジで勝つ)
++                b.winAt = rng.chance(config.show.bossJudge.byJudge) ? 1 : rng.int(2, b.left - 1);
+             }
+             emit(E.BONUS_START, { bonus: b.type, games: b.left, inAt: b.inAt });
+         } else if (s.phase === 'bonus') finishBonus();
+diff --git a/tests/logic.test.js b/tests/logic.test.js
+index ef62568..d702f84 100644
+--- a/tests/logic.test.js
++++ b/tests/logic.test.js
+@@ -183,10 +183,12 @@ test('AT のナビは中押し・右押しの4択。順押しナビは特化ゾ
+     }
+ });
+ 
+-test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最後のゲームで敗北) → AT に戻る', () => {
++test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最後のゲームでラストジャッジ) → AT に戻る', () => {
+     let wins = 0;
+     let loses = 0;
+-    for (let seed = 1; seed <= 20; seed++) {
++    let judgeWins = 0;
++    let attacks = 0;
++    for (let seed = 1; seed <= 40; seed++) {
+         const m = createMachine({ seed });
+         const rng = createRng(seed);
+         const log = [];
+@@ -199,23 +201,66 @@ test('AT 中のボーナス: 登場 → (狙え → 揃い → 勝利) か (最
+         const start = log.find(e => e.type === EVENTS.BONUS_START);
+         assert.equal(start.inAt, true);
+         const boss = log.filter(e => e.type === EVENTS.AT_BOSS);
++        const judge = log.filter(e => e.type === EVENTS.AT_BOSS_JUDGE);
+         assert.equal(boss[0].final, false, '最初は登場');
++        assert.ok(boss.concat(judge).every(b => b.boss === boss[0].boss), '相手は同じ');
+         const last = boss[boss.length - 1];
+-        assert.equal(boss.length, 2);
+-        assert.ok(boss.every(b => b.boss === boss[0].boss), '相手は同じ');
+-        if (last.win) {
++        if (boss.length === 2) {
++            // 狙え → 揃い → 勝利 (ラストジャッジは出ない)
++            assert.equal(last.win, true);
++            assert.equal(judge.length, 0);
+             wins++;
+             const i = log.indexOf(last);
+             const nerae = log.findIndex(e => e.type === EVENTS.BONUS_NERAE);
+             const align = log.findIndex((e, k) => k > nerae && e.type === EVENTS.GAME_END);
+             assert.ok(nerae < align && align < i, '狙え → 揃い → 勝利の順');
+             assert.equal(log[align].win, 'koori');
+-        } else loses++;
++        } else {
++            // 最後のゲームのラストジャッジ。こおりくん以外が必殺技を放つのは勝つときだけ
++            assert.equal(boss.length, 1);
++            assert.equal(judge.length, 1);
++            const j = judge[0];
++            if (j.finisher !== 'koori') assert.equal(j.win, true);
++            const bonusGames = log.filter(e => e.type === EVENTS.BONUS_GAME);
++            assert.equal(bonusGames[bonusGames.length - 1].left, 0, '最後のゲーム');
++            if (j.win) judgeWins++;
++            else loses++;
++        }
++        // 仲間の攻撃はレア役のとき、勝つ前だけ。金・虹は勝つボーナスだけ
++        const won = boss.length === 2 || (judge[0] && judge[0].win);
++        for (const a of log.filter(e => e.type === EVENTS.AT_BOSS_ATTACK)) {
++            attacks++;
++            assert.ok(['cutin', 'special'].includes(a.move));
++            assert.ok(['hit', 'guard', 'dodge'].includes(a.result));
++            if (a.result !== 'hit') assert.equal(a.color, 'white');
++            if (['gold', 'rainbow'].includes(a.color)) assert.ok(won, '金・虹は確定');
++        }
+         const end = log.find(e => e.type === EVENTS.BONUS_END);
+         assert.equal(end.at, false);
+         assert.ok(['at', 'standby'].includes(m.snapshot().phase) || log.some(e => e.type === EVENTS.AT_END));
+     }
+-    assert.ok(wins > 0 && loses > 0, `勝ち ${wins} 負け ${loses}`);
++    assert.ok(wins > 0 && loses > 0 && judgeWins > 0, `勝ち ${wins} ラストジャッジで勝ち ${judgeWins} 負け ${loses}`);
++    assert.ok(attacks > 0, '仲間の攻撃が出る');
++});
++
++test('AT 中のボーナスのラストジャッジで勝つと、特化ゾーンが始まる', () => {
++    const m = createMachine({ seed: 3 });
++    const rng = createRng(3);
++    const log = [];
++    m.on(e => log.push(e));
++    m.debug.direct();
++    play(m, rng);
++    m.debug.atBonus('reg');
++    play(m, rng);   // 7 を揃える
++    m.debug.setNextRole('none');
++    play(m, rng);   // 最初のゲーム (登場)
++    m.debug.bossJudge(true);
++    play(m, rng);
++    const j = log.find(e => e.type === EVENTS.AT_BOSS_JUDGE);
++    assert.ok(j && j.win);
++    let guard = 0;
++    while (!log.some(e => e.type === EVENTS.TOKKA_START) && guard++ < 10) play(m, rng);
++    assert.ok(log.some(e => e.type === EVENTS.TOKKA_START), '特化ゾーンへ');
+ });
+ 
+ test('前兆の途中で AT のゲーム数がなくなると、ラストジャッジで当落を告知する', () => {

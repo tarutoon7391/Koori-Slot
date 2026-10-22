@@ -95,6 +95,9 @@ const SOUNDS = {
     // 違和感演出: ジジッという乱れの音 / 低く鈍いレバー音
     glitch: () => { noise(0, 0.12, 0.08); tone(1200, 0.02, 0.06, { slideTo: 300, volume: 0.05, type: 'square' }); },
     leverOdd: () => tone(90, 0, 0.35, { slideTo: 60, volume: 0.12, type: 'sawtooth' }),
+    // AT 中のボーナスの戦闘: 相手がガードした (ガキィン) / かわした (ヒュッ)
+    guard: () => { noise(0, 0.08, 0.1); tone(1760, 0, 0.18, { volume: 0.07, type: 'square' }); tone(2637, 0.03, 0.25, { volume: 0.04, type: 'triangle' }); },
+    dodge: () => { noise(0, 0.2, 0.05); tone(1400, 0, 0.18, { slideTo: 400, volume: 0.04, type: 'sine' }); },
     // 押し順ナビとちがう押し順の警告 (低いブザーを2回)
     warn: () => [0, 0.2].forEach(s => tone(196, s, 0.15, { volume: 0.09, type: 'square' })),
     // 「こおりを狙え」: テンパイ (あおる音) / こおりくん揃い / AT確定 (専用の当たり音。声の代わり。画面設計書 7-2)

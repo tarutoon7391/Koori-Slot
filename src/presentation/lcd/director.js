@@ -13,12 +13,15 @@ import {
     SKIRMISH_MS, TEAMS, drawBattle, drawCutin, drawDirect, drawElevator, drawFlash, drawFloor, drawHeaven,
     drawMiddle, drawNavi, drawStandby, drawTenjo
 } from './scenes.js';
-import { BOSS_MS, END_MS, ENTRY_MS, KAKUTEI_MS, drawAtKakutei, drawBonusEnd, drawBonusScreen, drawBossFx, drawNerae } from './bonus.js';
+import { BOSS_MS, END_MS, ENTRY_MS, KAKUTEI_MS, drawAtKakutei, drawBonusEnd, drawBonusHud, drawBonusScreen, drawBossFx, drawNerae } from './bonus.js';
+import {
+    ATTACK_CUTIN_MS, ATTACK_RESULT_MS, BATTLE_ALLIES, DUEL_MS, ENTER_MS, drawBossAttack, drawBossBattle, drawBossJudge, drawViewHint
+} from './bossBattle.js';
 import { BIG_CARDS, EPISODES, REG_CARDS } from './bonusStory.js';
 import { FINISHERS, LINES, SPECIALS } from './battleLines.js';
 import { CUTIN_MS, TALK_MS, drawSpecialCutin, drawTalk } from './special.js';
 import { chanceCutin, neraeCutin } from './cutinCast.js';
-import { SKILL_KIND, SKILL_MS } from './skillFx.js';
+import { HIT_AT, SKILL_KIND, SKILL_MS } from './skillFx.js';
 import {
     INTRO_MS, OPEN_STEP_MS, RESULT_MS, STOCK_MS, TOKKA_END_MS, drawTokka, drawTokkaEnd, drawTokkaIntro, drawTokkaSelect, drawTokkaStock
 } from './tokka.js';
@@ -40,6 +43,17 @@ const LEAVE_MS = 200;          // 前のカットインが右へはけて消え�
 const OKA_RAINBOW_RATE = 0.25; // おかランプ: 100G 以上の上乗せでランプが虹色に光る割合
 const CUTIN_KINDS = ['cutin', 'heaven'];   // 重ねるカットイン (必殺技のカットインは v.spCut)
 // 違和感演出 (notice の iwakan。画面設計書 5-7) の長さ
+// AT 中のボーナスの戦闘で、仲間の攻撃が当たったときに減らす相手の体力 (見せ方だけ。期待度は文字の色と「畳みかけろ！」)
+const BOSS_DAMAGE = { white: 0.1, red: 0.15, gold: 0.22, rainbow: 0.3 };
+const BOSS_HP_MIN = 0.08;      // 倒すまでは、これより減らさない
+
+// AT 中のボーナスの画面 ('battle' バトル画面 / 'bonus' ボーナス画面)。前に選んだほうで始める (このブラウザに覚えておく)
+function savedBossView() {
+    try { return localStorage.getItem('koori-slot-bossview') === 'bonus' ? 'bonus' : 'battle'; } catch (e) { return 'battle'; }
+}
+function saveBossView(id) {
+    try { localStorage.setItem('koori-slot-bossview', id); } catch (e) { /* 保存できない環境 */ }
+}
 const IWAKAN_MS = { navGlitch: 900, navQuestion: 1200, noise: 900, mute: 1600, freeze: 700, invert: 420 };
 // 特化ゾーンのパターンは、前に選んだほうを最初に選んでおく (このブラウザに覚えておく)
 function savedPattern() {
@@ -98,6 +112,10 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         tokkaFx: null,     // 特化ゾーン当選のフリーズ風の告知: { since, stock }
         tokkaEnd: null,    // 特化ゾーン終了の画面
         bossFx: null,      // AT 中のボーナスの相手の登場・勝利・敗北: { kind, boss, since }
+        bossView: savedBossView(),   // AT 中のボーナスの画面: 'battle' (バトル画面) / 'bonus' (ボーナス画面)。PUSH で切りかえる
+        bossAtk: null,     // レア役のときの仲間の攻撃 (at:bossAttack): { boss, attacker, move, result, color, shout, shouter, phase, since, hp }
+        bossJudge: null,   // ボーナスの最後のゲームの一騎打ち (at:bossJudge): { boss, win, finisher, phase, since, skill }
+        pendingBoss: null, // レバーで届いた at:bossAttack / at:bossJudge。リールが止まってから見せる
         judge: null,       // AT 0G の当落告知 (ラストジャッジ): { team, win, bonus, phase, since }
         navWarn: null,     // 押し順ナビとちがう押し順で押したときの警告: { since }
         at: null,
@@ -117,7 +135,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         lastPayout: 0
     };
     const queue = [];
-    let hold = null;      // { until, then } | { push: 'battle' | 'attack' | 'select' | 'judge', timeout }
+    let hold = null;      // { until, then } | { push: 'battle' | 'attack' | 'select' | 'judge' | 'bossJudge', timeout }
     // 最後のリールが止まりきるまで、そのゲームの結果を見せない。hold とは別に持つ
     // (レバーのときに始まった演出の時間待ち (四天王の登場など) を、リールの待ちで上書きして消さないように)
     let reelHold = false;
@@ -361,6 +379,128 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         });
     }
 
+    // ----- AT 中のボーナスの戦闘 (2026-10-21 ユーザー指定。画面設計書 5-3-1) -----
+    // バトル画面を出しているか (ボーナス画面との切りかえは PUSH)
+    const battleShown = () => Boolean(v.bonus && v.bonus.inAt && v.bonus.boss && v.bossView === 'battle');
+
+    // 勝利 (撃破 → 特化ゾーン確定) / 敗北 (撃破ならず…) の画面
+    function bossResult(boss, win) {
+        const kind = win ? 'win' : 'lose';
+        v.bossFx = { kind, boss, since: now };
+        sound.play(win ? 'win' : 'lose');
+        talk(boss, win ? 'lose' : 'win', 400);
+        if (win) {
+            if (v.bonus) {
+                v.bonus.tokka = true;
+                v.bonus.defeated = true;
+                v.bonus.hp = 0;
+            }
+            after(500, () => sound.say && sound.say('特化ゾーン確定！'));
+            setButton('rainbow', { pop: true });
+        }
+        wait(BOSS_MS[kind], () => {
+            v.bossFx = null;
+            setButton('white', { lit: false });
+        });
+    }
+
+    // レア役のときの仲間の攻撃 (at:bossAttack)。攻撃のカットインか必殺技 → 当たる・ガード・よける → 文字
+    // 文字の色 (白 < 赤 < 金・虹は確定) と「畳みかけろ！」は内部処理の抽選。だれが攻めるかは演出側で選ぶ (期待度には関係しない)
+    function startBossAttack(e) {
+        const b = v.bonus;
+        if (!b) return;
+        const hit = e.result === 'hit';
+        const damage = hit ? (BOSS_DAMAGE[e.color] || 0.1) * (e.move === 'special' ? 1.4 : 1) : 0;
+        const hpAfter = Math.max(BOSS_HP_MIN, b.hp - damage);
+        // ボーナス画面のときは見せない (倒したときだけ出す。体力は減らしておく)
+        if (!battleShown()) {
+            b.hp = hpAfter;
+            return;
+        }
+        const attacker = pick(BATTLE_ALLIES);
+        const shouter = pick(BATTLE_ALLIES.filter(id => id !== attacker && ['koori', 'onioni', 'yasu', 'okagappa', 'asahara', 'ueno'].includes(id)));
+        const a = { ...e, attacker, shouter, phase: e.move === 'special' ? 'special' : 'cutin', since: now, hp: b.hp };
+        v.bossAtk = a;
+        const result = () => {
+            a.phase = 'result';
+            a.since = now;
+            if (hit) {
+                b.hp = hpAfter;
+                a.hp = hpAfter;
+                sound.play(e.color === 'rainbow' ? 'flashRainbow' : e.color === 'gold' ? 'kakutei' : e.color === 'red' ? 'flashBig' : 'addSmall');
+                if (e.color === 'gold' || e.color === 'rainbow') setButton(e.color, { pop: e.color === 'rainbow' });
+                else if (e.color === 'red') setButton('red');
+            } else {
+                sound.play('lose');
+                talk(e.boss, 'win', 200);
+            }
+            wait(ATTACK_RESULT_MS, () => {
+                v.bossAtk = null;
+                setButton('white', { lit: false });
+            });
+        };
+        const strike = () => {
+            a.phase = 'strike';
+            a.since = now;
+            after(SKILL_MS * HIT_AT, () => sound.play(hit ? 'clash' : e.result === 'guard' ? 'guard' : 'dodge'));
+            wait(SKILL_MS, result);
+        };
+        if (e.move === 'special') specialCut(attacker, 'ally', SPECIALS[attacker], strike);
+        else {
+            sound.play('cutin');
+            wait(ATTACK_CUTIN_MS, strike);
+        }
+    }
+
+    // 最後のゲームの一騎打ち「ラストジャッジ」(at:bossJudge): PUSH (押さなくても進む) → 激突 → 必殺技 → 勝ち負け
+    // こおりくんではなく仲間 (finisher) が飛びこんで必殺技を放ったら勝ち確定。こおりくんの技は、防がれて反撃されることもある
+    function startBossJudge(e) {
+        v.bossJudge = { boss: e.boss, win: e.win, finisher: e.finisher || 'koori', phase: 'intro', since: now };
+        v.bossAtk = null;
+        sound.play('blackout');
+        setButton('red', { pop: true });
+        hold = { push: 'bossJudge', timeout: now + JUDGE_WAIT_MS };
+    }
+
+    function revealBossJudge() {
+        const j = v.bossJudge;
+        hold = null;
+        const done = () => {
+            v.bossJudge = null;
+            bossResult(j.boss, j.win);
+        };
+        const skill = phase => () => {
+            j.phase = phase;
+            j.since = now;
+            j.skill = phase === 'counter' ? SKILL_KIND[j.boss] : j.finisher === 'koori' ? 'rainbowSword' : SKILL_KIND[j.finisher];
+            after(SKILL_MS * HIT_AT, () => sound.play(phase === 'guard' ? 'guard' : 'clash'));
+            wait(SKILL_MS, phase === 'guard' ? counter : done);
+        };
+        // こおりくんの技を防いだら、相手の必殺技で反撃
+        const counter = () => {
+            talk(j.boss, 'special');
+            wait(900, () => specialCut(j.boss, 'enemy', null, skill('counter')));
+        };
+        j.phase = 'duel';
+        j.since = now;
+        setButton('white', { lit: false });
+        [0.18, 0.5, 0.82].forEach(k => after(DUEL_MS * k, () => sound.play('clash')));
+        wait(DUEL_MS, () => {
+            if (j.finisher !== 'koori') {
+                // 仲間が飛びこんでくる (確定)
+                j.phase = 'enter';
+                j.since = now;
+                sound.play('flashRainbow');
+                after(420, () => sound.play('kakutei'));
+                setButton('rainbow', { pop: true });
+                wait(ENTER_MS, () => specialCut(j.finisher, 'ally', SPECIALS[j.finisher], skill('skill')));
+                return;
+            }
+            const name = (j.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name;
+            specialCut('koori', 'ally', name, skill(j.win ? 'skill' : 'guard'));
+        });
+    }
+
     // ----- 上乗せ特化ゾーン -----
     function confirmTokka() {
         const z = v.tokka;
@@ -488,6 +628,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             if (e.payout) sound.play('payout');
             else if (e.win === 'replay') sound.play('replay');
             changed();
+
+            // AT 中のボーナスの戦闘: 仲間の攻撃・ラストジャッジは、リールが止まってから
+            if (v.pendingBoss) {
+                const p = v.pendingBoss;
+                v.pendingBoss = null;
+                if (p.kind === 'judge') startBossJudge(p);
+                else startBossAttack(p);
+                return;
+            }
 
             // 「こおりを狙え」の結果: そろったら AT確定 を見せきるまで待つ。そろわなければガセ
             if (v.nerae) {
@@ -625,7 +774,8 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                 episode: e.bonus === 'epbig' ? nextEpisode() : 0,
                 // エピソードBIG は AT 確定 (仕様書。AT 中は特化ゾーン確定)
                 at: e.bonus === 'epbig', atLabel: atLabel(),
-                inAt: Boolean(e.inAt), boss: null, tokka: e.inAt && e.bonus === 'epbig'
+                inAt: Boolean(e.inAt), boss: null, tokka: e.inAt && e.bonus === 'epbig',
+                hp: 1, defeated: false   // バトル画面の相手の体力 (見せ方だけ)
             };
             if (e.bonus === 'epbig') onEpisode(v.bonus.episode);
             setButton(e.bonus === 'epbig' ? 'rainbow' : 'gold');
@@ -653,6 +803,9 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             v.bonusEnd = { bonus: e.bonus, payout: b ? b.payout : 0, at: e.at, stock: e.stock, inAt: Boolean(b && b.inAt), tokka: Boolean(b && (b.tokka || (b.inAt && b.at))), since: now };
             v.bonus = null;
             v.nerae = null;
+            v.bossAtk = null;
+            v.bossJudge = null;
+            v.pendingBoss = null;
             // AT 中のボーナスのあとは AT に戻る (AT のゲーム数はボーナスの間止まっていた)
             if (!e.at && !e.stock) v.phase = v.at ? 'at' : 'normal';
             sound.play(e.stock || e.at ? 'fanfare' : 'bonusEnd');
@@ -706,19 +859,10 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             if (v.bonus) v.bonus.boss = e.boss;
             const kind = !e.final ? 'intro' : e.win ? 'win' : 'lose';
             const show = () => {
+                if (kind !== 'intro') return bossResult(e.boss, e.win);
                 v.bossFx = { kind, boss: e.boss, since: now };
-                if (kind === 'intro') {
-                    sound.play('cutin');
-                    talk(e.boss, 'intro', 800);
-                } else {
-                    sound.play(e.win ? 'win' : 'lose');
-                    talk(e.boss, e.win ? 'lose' : 'win', 400);
-                }
-                if (kind === 'win') {
-                    if (v.bonus) v.bonus.tokka = true;
-                    after(500, () => sound.say && sound.say('特化ゾーン確定！'));
-                    setButton('rainbow', { pop: true });
-                }
+                sound.play('cutin');
+                talk(e.boss, 'intro', 800);
                 wait(BOSS_MS[kind], () => {
                     v.bossFx = null;
                     setButton('white', { lit: false });
@@ -733,6 +877,16 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
             if (kind === 'win') specialCut('koori', 'ally', (e.boss === 'maou' ? FINISHERS.maou : FINISHERS.boss).name, fight);
             else if (kind === 'lose') enemySpecial(e.boss, fight);
             else show();
+        },
+
+        // AT 中のボーナスのレア役: 仲間の攻撃 (v0.6)。レバーで届くが、レア役の出目を見せてから攻撃する
+        [E.AT_BOSS_ATTACK](e) {
+            v.pendingBoss = { kind: 'attack', ...e };
+        },
+
+        // AT 中のボーナスの最後のゲーム: 相手との一騎打ち「ラストジャッジ」(v0.6)。リールが止まってから
+        [E.AT_BOSS_JUDGE](e) {
+            v.pendingBoss = { kind: 'judge', ...e };
         },
 
         // AT 0G の当落告知「ラストジャッジ」(画面設計書 5-4): PUSH (押さなくても進む) で結果
@@ -931,6 +1085,7 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         if (hold && hold.push && t >= hold.timeout) {
             if (hold.push === 'battle') revealBattle();
             else if (hold.push === 'judge') revealJudge();
+            else if (hold.push === 'bossJudge') revealBossJudge();
             else if (hold.push === 'select') confirmTokka();
             else hitAttack();
         }
@@ -964,7 +1119,16 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         ctx.clip();
         // 場面
         if (v.phase === 'standby' && v.standby) drawStandby(ctx, t, v.standby);
-        else if (v.phase === 'bonus' && v.bonus) drawBonusScreen(ctx, t, v.bonus);
+        else if (v.phase === 'bonus' && v.bonus) {
+            const b = v.bonus;
+            if (v.bossJudge) drawBossJudge(ctx, t, v.bossJudge);
+            else if (battleShown()) {
+                if (v.bossAtk && v.bossAtk.phase !== 'special') drawBossAttack(ctx, t, v.bossAtk, b);
+                else drawBossBattle(ctx, t, b, { calm: Boolean(v.bossAtk) });
+                drawBonusHud(ctx, t, b);
+            } else drawBonusScreen(ctx, t, b);
+            if (b.inAt && b.boss && !v.bossJudge && !v.bossFx && !v.bossAtk && !v.nerae && !v.kakutei) drawViewHint(ctx, t, v.bossView);
+        }
         else if (v.phase === 'at' && v.at) {
             const z = v.tokka;
             if (z && z.phase === 'select') drawTokkaSelect(ctx, t, z.choice, hold && hold.push === 'select' ? hold.timeout - t : 0);
@@ -1046,6 +1210,15 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
         ctx.restore();
     }
 
+    // AT 中のボーナスの画面を切りかえる (PUSH・液晶のタップ)。ラストジャッジや仲間の攻撃のあいだは切りかえない
+    function toggleView() {
+        if (!(v.phase === 'bonus' && v.bonus && v.bonus.inAt && v.bonus.boss) || v.bossJudge || v.bossAtk || (hold && hold.push)) return false;
+        v.bossView = v.bossView === 'battle' ? 'bonus' : 'battle';
+        saveBossView(v.bossView);
+        sound.play('stop');
+        return true;
+    }
+
     function snapshot() {
         const navOdd = v.navOdd && v.navOdd.until > now ? v.navOdd.type : null;
         return { button: v.button, nav: v.nav, navOdd, credit: v.credit, lastPayout: v.lastPayout, phase: v.phase, waitingPush: Boolean(hold && hold.push), selecting: Boolean(hold && hold.push === 'select') };
@@ -1089,14 +1262,22 @@ export function createDirector({ sound, reels, onChange = () => {}, onEpisode = 
                 revealJudge();
                 return true;
             }
+            if (hold && hold.push === 'bossJudge') {
+                sound.play('push');
+                revealBossJudge();
+                return true;
+            }
             if (hold && hold.push) {
                 sound.play('push');
                 revealBattle();
                 return true;
             }
+            // AT 中のボーナス: バトル画面とボーナス画面を切りかえる
+            if (toggleView()) return true;
             sound.play('push');
             return false;
         },
+        toggleView,
         // 特化ゾーンのパターンを選ぶ。side: 'left' (魔王の褒美) / 'right' (こおり大腸炎)
         // side: 'left' (魔王の褒美) / 'middle' (おかランプ) / 'right' (こおり大腸炎)
         select(side) {

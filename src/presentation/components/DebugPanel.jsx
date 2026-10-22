@@ -91,6 +91,9 @@ export default function DebugPanel({ game }) {
                 <button type="button" onClick={() => d.atBonus && d.atBonus('big')}>AT 中の BIG</button>
                 <button type="button" onClick={() => d.atBonus && d.atBonus('reg')}>AT 中の REG</button>
                 <button type="button" onClick={() => d.atBonus && d.atBonus('epbig')}>AT 中のエピソードBIG</button>
+                <button type="button" onClick={() => d.bossJudge && d.bossJudge(true)}>次はラストジャッジ（勝ち）</button>
+                <button type="button" onClick={() => d.bossJudge && d.bossJudge(false)}>次はラストジャッジ（負け）</button>
+                <button type="button" onClick={() => d.setNextRole('strongCherry')}>次は強チェリー（仲間の攻撃）</button>
                 <button type="button" onClick={() => d.startZencho({ real: true, team: team || null })}>AT 中の本前兆（8G）</button>
                 <button type="button" onClick={() => d.startZencho({ real: false, team: team || null })}>AT 中のガセ前兆（8G）</button>
                 <button type="button" onClick={() => d.atEndSoon && d.atEndSoon()}>AT の残りを 3G に</button>
