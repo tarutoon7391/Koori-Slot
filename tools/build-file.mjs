@@ -38,7 +38,8 @@ html = html.replace(/<script type="module" crossorigin src="\.\/([^"]+\.js)"><\/
     scripts += `<script>${readFileSync(join(outDir, file), 'utf8').replace(/<\/script/gi, '<\\/script')}</script>\n`;
     return '';
 });
-html = html.replace('</body>', `${scripts}</body>`);
+// 置きかえは関数で渡す (文字列で渡すと、スクリプトの中の「$&」などが置きかえの記号として読まれて壊れる)
+html = html.replace('</body>', () => `${scripts}</body>`);
 writeFileSync(join(root, 'play.html'), html);
 rmSync(outDir, { recursive: true, force: true });
 console.log(`play.html (${Math.round(html.length / 1024)} KB)`);
