@@ -122,7 +122,7 @@ export const EPISODES = [
             // 3チーム (ばりきつよめ・5DX・お願いマッスル) の戦い
             {
                 bg: 'middle', brawl: true, cast: ['koori', 'okagappa', 'dake', 'ueno', 'yamamou', 'ikekimu'], who: 'だけさん', line: 'この鍛え上げたこぶしを受けてみろ！',
-                then: { who: 'ウエノーブル', line: '甘い！我が筋肉の前では、すべてがそよ風よ！' }
+                then: { who: 'ウエノーブル', line: '甘い！我が筋肉の前では、すべてがそよ風よぉ！' }
             },
             {
                 bg: 'middle', brawl: true, cast: ['tamu', 'hibikimakuri', 'yasu', 'shibata', 'onioni', 'yamamou'], who: 'やまもぅ', line: 'モォーーッ！牛の底力を思い知れ！',
@@ -130,8 +130,8 @@ export const EPISODES = [
             },
             // チームASK-3 が乱入
             {
-                bg: 'middle', cast: ['sasaki', { id: 'asahara', drop: true }, 'kotani'], who: 'KING.ASAHARA', line: 'フハハハ！ずいぶん楽しそうではないか。財宝は、このCS城の主がいただく！',
-                then: [{ who: 'Mr.KOTANI', line: '現在、3チームとも消耗しています。我々の勝率は87.4%です。' }, { who: 'Mr.SASAKI', line: 'よっしゃ！いっちょやったりますか！' }]
+                bg: 'middle', cast: ['sasaki', { id: 'asahara', drop: true }, 'kotani'], who: 'KING.ASAHARA', line: 'フハハハ！ずいぶん楽しそうではないか。財宝は、このCS城の主ASAHARAがいただく！',
+                then: [{ who: 'Mr.KOTANI', line: '現在、3チームとも消耗しています。我々の勝率は87.4%です。' }, { who: 'Mr.SASAKI', line: 'この状況。とてもいいです。漁夫の利というやつです。' }]
             },
             {
                 bg: 'middle', cast: ['koori', 'yasu', 'dake', 'tamu', 'onioni'], who: 'おにおに', line: 'ASAHARA…！やはり来ていたか。',
@@ -150,7 +150,7 @@ export const EPISODES = [
             },
             // 5DX とお願いマッスルは合意
             {
-                bg: 'middle', cast: ['okagappa', 'hibikimakuri', 'yamamou', 'shibata', 'ueno', 'ikekimu'], who: 'ウエノーブル', line: '山分けか…よかろう！妻への黄金のネックレスさえ手に入れば、それでよい！',
+                bg: 'middle', cast: ['okagappa', 'hibikimakuri', 'yamamou', 'shibata', 'ueno', 'ikekimu'], who: 'ウエノーブル', line: '山分けか…よかろう！妻へ送る黄金のネックレスさえ手に入れば、それでよい！',
                 then: [{ who: 'おかがっぱ', line: '俺たち5DXも乗ったぜ　イェア！' }, { who: 'やまもぅ', line: '牛は群れで生きる生き物だからな！' }]
             },
             // KING.ASAHARA は拒否
@@ -185,7 +185,7 @@ export const EPISODES = [
             },
             {
                 bg: 'middle', cast: ['sasaki', 'asahara', 'kotani'], who: 'KING.ASAHARA', line: '…約束は約束だ。ASK-3も協力してやる。ただし、財宝の分け前は忘れるなよ！',
-                then: [{ who: 'Mr.SASAKI', line: 'よっしゃ！これで4チーム同盟ですわ！' }, { who: 'Mr.KOTANI', line: '突破率、大幅に上昇。記録しておきます。' }]
+                then: [{ who: 'Mr.SASAKI', line: 'これで4チーム同盟決定ですね。' }, { who: 'Mr.KOTANI', line: '突破率、大幅に上昇。記録しておきます。' }]
             },
             // 4チームで摩天楼を上っていく
             {
@@ -200,7 +200,7 @@ export const EPISODES = [
             // やすさん・たむさん・だけさんが残る
             {
                 bg: 'boss', floor: '22F', cast: ['yasu', 'tamu', 'dake'], who: 'だけさん', line: 'ここは私たちに任せて、先に行け！',
-                then: [{ who: 'やすさん', line: 'え！？ぼくも！？…ま、まあ、やるしかないか！' }, { who: 'たむさん', line: 'しゃーないな。ちゃちゃっと片づけて追いつくわ。' }]
+                then: [{ who: 'やすさん', line: 'え！？ぼくもですの！？…ま、まあ、やるしかないか！' }, { who: 'たむさん', line: 'しゃーないな。ちゃちゃっと片づけて追いつくわ。' }]
             },
             {
                 bg: 'boss', floor: '22F', cast: ['yasu', 'tamu', 'dake', 'urashima', 'daishi'], who: 'ダイシ', line: '重蔵、参りますぞ。…仏の顔も、ここまでです。',
@@ -213,7 +213,7 @@ export const EPISODES = [
             },
             // チーム5DX が残り、ほかの者はさらに上へ
             {
-                bg: 'boss', floor: '33F', cast: ['okagappa', 'hibikimakuri', 'yamamou'], crowd: 'makibikon', who: 'おかがっぱ', line: 'ここは俺たち5DXに任せな　イェア！先に行け！',
+                bg: 'boss', floor: '33F', cast: ['okagappa', 'hibikimakuri', 'yamamou'], crowd: 'makibikon', who: 'おかがっぱ', line: 'ここは俺たち5DXに任せな　イェア！ま～だまだ戦わねバ！',
                 then: [{ who: 'やまもぅ', line: '牛の角は、鉄だって貫く！モォーー！' }, { who: 'こおりくん', line: 'ありがとう！上で待ってるからね！' }]
             }
         ]
@@ -229,7 +229,7 @@ export const EPISODES = [
             },
             {
                 bg: 'boss', floor: '44F', cast: ['sasaki', 'asahara', 'kotani'], who: 'KING.ASAHARA', line: 'ここはワシらASK-3が引き受けてやる。おにおに、ワシに勝ったのだ。上で負けることは許さんぞ！',
-                then: [{ who: 'Mr.KOTANI', line: 'ドラゴンの攻撃パターン、すでに記録済みです。' }, { who: 'Mr.SASAKI', line: 'ほな、先に行っといてください！' }]
+                then: [{ who: 'Mr.KOTANI', line: 'ドラゴンの攻撃パターン、すでに記録済みです。' }, { who: 'Mr.SASAKI', line: '少しやばいです。が、なんてことはないですね。' }]
             },
             {
                 bg: 'boss', floor: '44F', cast: ['sasaki', 'asahara', 'kotani', 'nakata', 'runaya'], who: 'ルナヤ', line: '月の力よ、わたしに力を…！月の力よ…あら、これも言ったかしら？',
@@ -242,7 +242,7 @@ export const EPISODES = [
             },
             {
                 bg: 'boss', floor: '55F', cast: ['shibata', 'ueno', 'ikekimu', 'nozoema'], who: 'ウエノーブル', line: 'ほう…なかなかの筋肉。だが、1日26時間鍛えた我が筋肉には及ばぬ！',
-                then: { who: 'ノゾエマ', line: '…面白い。この刀と筋肉で、切り伏せてくれよう。' }
+                then: { who: 'ノゾエマ', line: '…面白い。この名刀江波と鍛えぬいた筋肉で、切り伏せてくれよう。' }
             },
             {
                 bg: 'boss', floor: '55F', vs: true, cast: ['ueno', 'nozoema'], who: 'イケキム', line: 'ここはオレたちが止める。行け、こおり。',
@@ -334,7 +334,7 @@ export const EPISODES = [
                 then: [{ who: 'こおりくん', line: 'いっけー！大腸炎アタック！' }, { who: '大魔王ASO', line: '…それで終わりか？' }]
             },
             {
-                bg: 'top', floor: '56F', cast: [{ id: 'koori', down: true }, { id: 'onioni', down: true }, 'maou'], who: '大魔王ASO', line: 'これが数百年の封印でたくわえた我が力。ひれ伏すがよい！',
+                bg: 'top', floor: '56F', cast: [{ id: 'koori', down: true }, { id: 'onioni', down: true }, 'maou'], who: '大魔王ASO', line: 'これが数百年の封印の中たくわえた我が力。ひれ伏すがよい！',
                 then: [{ who: 'こおりくん', line: 'う…強すぎる…体が動かない…' }, { who: 'おにおに', line: 'くそっ…ここまでなのか…！' }]
             },
             // KING.ASAHARA が大魔王の攻撃をはじく
@@ -354,7 +354,7 @@ export const EPISODES = [
             },
             {
                 bg: 'top', floor: '56F', cast: ['koori'], gather: ['onioni'], rainbow: true, who: 'おにおに', line: 'こおり！俺の最後の力だ！受け取ってくれ～！',
-                then: { who: 'こおりくん', line: 'おにおに…！うん…！受け取ったよ！！' }
+                then: { who: 'こおりくん', line: 'おにおに～～！受け取ったぜ～～！' }
             },
             // こおりくんが虹色に光り、コオリソードが大魔王絶対殺す剣に変わる
             {
@@ -369,7 +369,7 @@ export const EPISODES = [
             // 真っ二つにして撃破
             {
                 bg: 'top', floor: '56F', special: '大魔王絶対殺す剣', split: true, cast: [{ id: 'koori', rainbow: true, sword: true }], target: 'maou', who: 'こおりくん', line: 'これで…終わりだーーっ！！',
-                then: { who: '大魔王ASO', line: 'ば、ばかな…この我が…真っ二つに…！' }
+                then: { who: '大魔王ASO', line: 'ば、ばかな…この我が…このASOが…！このASOが～～～～～～！！！' }
             },
             // 財宝を山分けして、それぞれの帰る場所へ
             {
@@ -379,7 +379,7 @@ export const EPISODES = [
                     { who: 'KING.ASAHARA', line: 'ふん…今回はおまえたちに花を持たせてやる。次は負けんぞ、おにおに。' },
                     { who: 'おにおに', line: 'こおり、借金はこれで全部返してもらうぞ。…よくやったな。' },
                     { who: 'こおりくん', line: 'うん！これで…こおり、生きていける！' },
-                    { who: 'ナレーション', line: 'こうして、財宝を山分けしたみんなは、それぞれの帰る場所へと帰っていった。' }
+                    { who: 'ナレーション', line: 'こうして、財宝を山分けしたみんなは、それぞれの帰るべき場所へと帰っていった。' }
                 ]
             }
         ]
@@ -416,7 +416,7 @@ export const EPISODES = [
                 then: { who: 'こおりくん', line: 'え？借金は財宝で全部返したよね？何のこと？' }
             },
             {
-                bg: 'home', cast: ['koori', 'onioni'], who: 'おにおに', line: '忘れたのか？摩天楼突破の打ち上げで、おまえが「全員分おごる！」って言って、財宝を全部使い果たしただろう。'
+                bg: 'home', cast: ['koori', 'onioni'], who: 'おにおに', line: '忘れたのか？摩天楼突破の打ち上げで、おまえが「全員分おごるちゃむ！」って言って、財宝を全部使い果たしただろう。'
             },
             {
                 bg: 'home', cast: ['koori', 'onioni'], who: 'おにおに', line: 'それで足りない分を、また俺から借りたじゃないか。',
